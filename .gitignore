@@ -9,3 +9,5 @@ __pycache__/
 .DS_Store
 .AppleDouble
 .LSOverride
+
+/setup_torch_venv.sh
