@@ -2,10 +2,10 @@ numpy
 scipy
 #torch
 #torchaudio
-#torchlibrosa
+torchlibrosa
 soundfile
 pyyaml
 matplotlib
-#lightning
+lightning
 tensorboard
-#torchinfo
+torchinfo
