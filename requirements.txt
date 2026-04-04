@@ -1,0 +1,11 @@
+numpy
+scipy
+#torch
+#torchaudio
+#torchlibrosa
+soundfile
+pyyaml
+matplotlib
+#lightning
+tensorboard
+#torchinfo

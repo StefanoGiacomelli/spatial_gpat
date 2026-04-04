@@ -1,0 +1,50 @@
+# NAS Experiment — exp_spe_rn_fe_bg
+# Input: spectral  |  SpatialEarly: ResNetBlock
+# SpatialLate: FormantEnh  |  Smoother: BiGRU
+
+experiment:
+  name: exp_spe_rn_fe_bg
+  seed: 42
+
+input:
+  type: spectral
+  sr: 32000
+  n_mics: 4
+  hop_length: 320
+  n_fft: 512
+
+semantic:
+  checkpoint: semantic_backbone/epanns/checkpoint_closeto_.44.pt
+  early_group: {init: pretrained, frozen: false}
+  late_group:  {init: pretrained, frozen: false}
+  head_group:  {init: pretrained, frozen: false}
+
+cross_stitch:
+  cs_early_enabled: false
+  cs_late_enabled: false
+  C_bridge_early: 64
+  C_bridge_late: 128
+
+spatial_early:
+  type: resnet_block
+  n_layers: 1
+  out_channels: 64
+  use_msca: true
+  msca_reduction: 4
+  stride: [1, 1]
+
+spatial_late:
+  type: formant_enhancement
+  kernel_size: [3, 1]
+
+track_smoothing_spatial:
+  type: bigru
+  n_layers: 1
+  hidden_size: 256
+  dropout: 0.3
+
+heads:
+  n_tracks: 3
+
+data:
+  format: foa

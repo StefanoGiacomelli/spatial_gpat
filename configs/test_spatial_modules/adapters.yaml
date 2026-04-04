@@ -1,0 +1,15 @@
+# CrossStitchBridge — NAS SELD pipeline adapter
+# Misra et al., "Cross-Stitch Networks for Multi-task Learning", CVPR 2016
+# Vo & Han, "ResNet-Conformer with MSCA", DCASE 2024
+# c_bridge is an internal projection; no fixed paper value.
+
+cross_stitch_bridge:
+  c_spatial:  128    # spatial stream channels at bridge point
+  c_semantic: 512    # E-PANNs stream channels at bridge point
+  c_bridge:   64     # bridge projection channels
+
+test:
+  T_spatial:  40
+  F_spatial:  16
+  T_semantic: 20
+  F_semantic: 4

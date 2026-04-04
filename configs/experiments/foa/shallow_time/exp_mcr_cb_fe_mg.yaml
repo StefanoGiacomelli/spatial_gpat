@@ -1,0 +1,53 @@
+# NAS Experiment — exp_mcr_cb_fe_mg
+# Input: maxcorr  |  SpatialEarly: ConvBlock
+# SpatialLate: FormantEnh  |  Smoother: MHA-MGU
+
+experiment:
+  name: exp_mcr_cb_fe_mg
+  seed: 42
+
+input:
+  type: maxcorr
+  sr: 32000
+  n_mics: 4
+  stride: 320
+  n_filters: 64
+  kernel_length: 481
+
+semantic:
+  checkpoint: semantic_backbone/epanns/checkpoint_closeto_.44.pt
+  early_group: {init: pretrained, frozen: false}
+  late_group:  {init: pretrained, frozen: false}
+  head_group:  {init: pretrained, frozen: false}
+
+cross_stitch:
+  cs_early_enabled: false
+  cs_late_enabled: false
+  C_bridge_early: 64
+  C_bridge_late: 128
+
+spatial_early:
+  type: convblock
+  n_layers: 1
+  out_channels: 64
+  kernel_size: [3, 3]
+  pool_size: 1
+  dropout: 0.1
+
+spatial_late:
+  type: formant_enhancement
+  kernel_size: [3, 1]
+
+track_smoothing_spatial:
+  type: mhamgu
+  n_layers: 1
+  d_model: 128
+  n_heads: 4
+  n_tracks: 3
+  dropout: 0.3
+
+heads:
+  n_tracks: 3
+
+data:
+  format: foa

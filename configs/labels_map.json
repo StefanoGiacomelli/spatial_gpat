@@ -1,0 +1,37 @@
+{
+  "STARSS23": {
+    "n_classes": 13,
+    "classes": [
+      {"name": "Female speech, woman speaking",   "audioset_indices": [2]},
+      {"name": "Male speech, man speaking",       "audioset_indices": [1]},
+      {"name": "Clapping",                        "audioset_indices": [63]},
+      {"name": "Telephone",                       "audioset_indices": [389, 390, 391]},
+      {"name": "Laughter",                        "audioset_indices": [16]},
+      {"name": "Domestic sounds",                 "audioset_indices": [377, 412, 456]},
+      {"name": "Walk, footsteps",                 "audioset_indices": [53]},
+      {"name": "Door, open or close",             "audioset_indices": [354, 362]},
+      {"name": "Music",                           "audioset_indices": [137, 216, 267]},
+      {"name": "Musical instrument",              "audioset_indices": [138, 92, 143, 153, 175, 180]},
+      {"name": "Water tap, faucet",               "audioset_indices": [370]},
+      {"name": "Bell",                            "audioset_indices": [200, 203, 205]},
+      {"name": "Knock",                           "audioset_indices": [359]}
+    ]
+  },
+  "TAU-NIGENS2021": {
+    "n_classes": 12,
+    "classes": [
+      {"name": "alarm",                           "audioset_indices": [388, 395, 396, 399, 400]},
+      {"name": "crying baby",                     "audioset_indices": [23]},
+      {"name": "crash",                           "audioset_indices": [443, 469, 470]},
+      {"name": "barking dog",                     "audioset_indices": [75, 78]},
+      {"name": "female scream",                   "audioset_indices": [2, 14]},
+      {"name": "female speech",                   "audioset_indices": [2]},
+      {"name": "footsteps",                       "audioset_indices": [53]},
+      {"name": "knocking on door",                "audioset_indices": [359]},
+      {"name": "male scream",                     "audioset_indices": [1, 14]},
+      {"name": "male speech",                     "audioset_indices": [1]},
+      {"name": "ringing phone",                   "audioset_indices": [389, 390, 391]},
+      {"name": "piano",                           "audioset_indices": [153]}
+    ]
+  }
+}

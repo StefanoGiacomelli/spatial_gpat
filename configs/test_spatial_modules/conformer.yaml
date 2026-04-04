@@ -1,0 +1,34 @@
+# ResNet-Conformer + MSCA — Xue et al., WCSP 2023 / Vo & Han, DCASE 2024
+# ResNet channel progression — Xue 2023: 32->64->128->256 | Vo 2024: 64->128->256->512
+# Conformer layers: 2 (both papers)
+# Mel bands: 64 (both papers)
+# Input length: 250 frames = 5 s @ 20 ms hop (Xue 2023)
+
+multi_scale_channel_attention:
+  reduction_ratio: 4      # C/r bottleneck; r=4 is standard
+
+resnet_block:
+  in_channels: 32         # first ResNet block (Xue 2023; Vo uses 64)
+  out_channels: 64
+  stride: [1, 1]
+  use_msca: true
+  msca_reduction: 4
+
+conformer:
+  d_model: 256            # last ResNet block output (Xue 2023; Vo uses 512)
+  n_heads: 4              # 256/4 = 64 per head
+  ffn_expansion: 4
+  conv_kernel: 31         # Gulati et al. 2020 standard
+  dropout: 0.0
+  activation: "silu"
+
+attentive_statistics_pooling:
+  d_input: 256
+  hidden_dim: null
+
+test:
+  in_channels: 32
+  out_channels: 64
+  time_frames: 250
+  freq_bins: 64
+  d_model: 256

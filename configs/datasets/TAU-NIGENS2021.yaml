@@ -1,0 +1,23 @@
+# Dataset-specific training config — TAU-NIGENS2021
+# Loaded automatically by main.py when --dataset TAU-NIGENS2021 is used.
+# Merged into cfg['augmentation'] and cfg['training'].
+# CLI --batch-size always overrides training.batch_size.
+
+augmentation:
+  enabled: true
+  # FOA augmentations (format: foa)
+  p_rotate:    0.5     # azimuth rotation, theta ~ U(-180, 180 deg)
+  p_gain:      0.4     # global gain, g ~ exp(U(min_db, max_db))
+  p_elevflip:  0.2     # elevation flip: Z -> -Z, target z -> -z
+  gain_min_db: -6.0
+  gain_max_db:  6.0
+  # MIC augmentations (format: mic) — geometry-blind
+  p_perchan_gain:  0.4
+  perchan_gain_db: 2.0
+  p_noise:         0.3
+  noise_snr_db:    35.0
+
+training:
+  # TAU-NIGENS2021 max pos_weight ~30 — cap is generous
+  pos_weight_max: 100.0
+  weighted_sampler: false

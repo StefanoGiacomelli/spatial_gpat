@@ -1,0 +1,39 @@
+# EIN-v2 — Cao et al., ICASSP 2021
+# d_model: 512 (single value in paper)
+# n_heads: 8 (single value in paper)
+# n_tracks: 2 (single value in paper)
+# Cross-stitch applied at conv levels: {64, 128, 256, 512}
+# Audio: 4 s at 24 kHz, n_fft=1024, hop=600 -> T_frames=159, mel_bands=256
+
+double_conv:
+  in_channels: 8          # 4 log-mel + 3 IV + 1 (or 8-ch FOA features)
+  out_channels: 64        # first CNN block
+  kernel_size: [3, 3]
+  bias: false
+
+cross_stitch:
+  n_channels: 64          # smallest level (paper: 64, 128, 256, 512)
+  init_range: [0.1, 0.9]
+
+track_transformer:
+  d_model: 512
+  n_heads: 8
+  n_tracks: 2
+  num_layers: 2
+  dim_feedforward: 2048   # 4 * d_model
+  dropout: 0.0
+  pe_enable: false
+  pe_type: "t"
+  pe_dropout: 0.0
+
+positional_encoding:
+  d_model: 512
+  max_len: 512
+  pe_type: "t"
+  dropout: 0.0
+
+test:
+  batch_size: 1
+  T_frames: 159           # 4 s @ 24 kHz, n_fft=1024, hop=600
+  mel_bands: 256
+  d_model: 512

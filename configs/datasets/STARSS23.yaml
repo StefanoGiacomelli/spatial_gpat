@@ -1,0 +1,26 @@
+# Dataset-specific training config — STARSS23
+# Loaded automatically by main.py when --dataset STARSS23 is used.
+# Merged into cfg['augmentation'] and cfg['training'].
+# CLI --batch-size always overrides training.batch_size.
+
+augmentation:
+  enabled: true
+  # FOA augmentations (format: foa)
+  p_rotate:    0.5     # azimuth rotation, theta ~ U(-180, 180 deg)
+  p_gain:      0.4     # global gain, g ~ exp(U(min_db, max_db))
+  p_elevflip:  0.2     # elevation flip: Z -> -Z, target z -> -z
+  gain_min_db: -6.0
+  gain_max_db:  6.0
+  # MIC augmentations (format: mic) — geometry-blind
+  p_perchan_gain:  0.4   # per-channel independent gain
+  perchan_gain_db: 2.0   # ±2 dB per channel
+  p_noise:         0.3   # additive diffuse white noise
+  noise_snr_db:    35.0  # noise floor SNR in dB
+
+training:
+  # pos_weight cap: STARSS23 has extreme imbalance (max ~1368).
+  # Cap prevents gradient explosions while preserving class-imbalance correction.
+  pos_weight_max: 50.0
+  # WeightedRandomSampler: off by default for STARSS23 (90 clips → all seen every epoch).
+  # Enable if needed for very unbalanced splits.
+  weighted_sampler: false

@@ -1,0 +1,26 @@
+# SELDnet CRNN — Adavanne et al., IEEE JSTSP 2019
+# n_fft ablation: {512, 1024, 2048} — optimal: 512
+# CNN filters ablation: {16, 32, 64, 128, 256, 512} — optimal: 64
+# Pool sizes (frequency axis): (8, 8, 2) — fixed in paper
+# GRU hidden nodes ablation: {16, 32, 64, 128, 256, 512} — optimal: 128
+# Sequence length ablation: {32, 64, 128, 256, 512} — optimal: 256 (RESYN)
+
+input_handler:
+  n_fft: 512
+  hop_length: 256         # 50% overlap
+
+conv_blocks:
+  out_channels: 64        # P = 64 in paper
+  kernel_size: [3, 3]
+  pool_sizes: [8, 8, 2]   # MPi in paper
+  dropout: 0.0
+
+bigru:
+  hidden_size: 128        # Q = 128 in paper
+  num_layers: 2
+  dropout: 0.0
+
+test:
+  nb_channels: 4
+  sample_rate: 44100
+  duration_seconds: 1.0   # T_samples=44100; T_frames=171 after STFT

@@ -1,0 +1,17 @@
+# PI-RNN / MHA-MGU — Diaz-Guerra et al., Forum Acusticum 2023
+# d_model: 128 (d in paper)
+# n_tracks: 10 (M in paper; higher than max 3 concurrent sources)
+# d_input: 128 (icoCNN embedding dimension = d_model)
+# n_heads: not specified in paper; using 4 (128/4 = 32 d_head)
+
+mhamgu:
+  d_model: 128
+  n_heads: 4
+  n_tracks: 10
+  d_input: null           # null -> uses d_model=128
+
+test:
+  T: 40
+  M_X: 10                 # input sources = n_tracks
+  d_input: 128            # same as d_model when d_input=null
+  batch_size: 1
