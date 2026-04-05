@@ -37,7 +37,7 @@ spatial_late:
   type: track_transformer
   d_model: 128
   n_heads: 4
-  n_tracks: 3
+  n_tracks: 2
 
 track_smoothing_spatial:
   type: bigru
@@ -46,7 +46,7 @@ track_smoothing_spatial:
   dropout: 0.3
 
 heads:
-  n_tracks: 3
+  n_tracks: 2
 
 data:
   format: foa
