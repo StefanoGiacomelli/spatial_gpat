@@ -224,8 +224,16 @@ class NASLightningModule(L.LightningModule):
         )
         # out_s     : (B, T_mel, N, C, 3)  Multi-ACCDOA (norm = sigmoid(act))
         # act_logits: (B, T_mel, N, C)     raw SED logits for tPIT BCE
-        # doa_raw   : (B, T_mel, N, C, 3)  raw DOA vectors for tPIT MSE
+        # doa_raw   : (B, T_mel, N, C, 3)  tanh-bounded DOA for tPIT MSE
         # out_e     : (B, T_sem, C)        class-presence logits
+
+        # T_mel alignment: resampling rounding may produce ±1 frame difference
+        # between padded audio (full-clip mode) and pre-computed target T.
+        T = min(act_logits.shape[1], tgt_spatial.shape[1])
+        act_logits  = act_logits[:, :T]
+        doa_raw     = doa_raw[:, :T]
+        out_s       = out_s[:, :T]
+        tgt_spatial = tgt_spatial[:, :T]
 
         loss_tpit = self.tpit_loss(act_logits, doa_raw, tgt_spatial)
         loss_bce  = self.sem_loss(out_e, tgt_spatial)    # downsamples tgt internally
@@ -258,6 +266,13 @@ class NASLightningModule(L.LightningModule):
         out_s, out_e, act_logits, doa_raw = self.model(
             x, orig_sr=self.orig_sr, return_components=True
         )
+
+        # T_mel alignment (see training_step)
+        T = min(act_logits.shape[1], tgt_spatial.shape[1])
+        act_logits  = act_logits[:, :T]
+        doa_raw     = doa_raw[:, :T]
+        out_s       = out_s[:, :T]
+        tgt_spatial = tgt_spatial[:, :T]
 
         loss_tpit = self.tpit_loss(act_logits, doa_raw, tgt_spatial)
         loss_bce  = self.sem_loss(out_e, tgt_spatial)
@@ -312,6 +327,10 @@ class NASLightningModule(L.LightningModule):
         """
         x, tgt_spatial = batch
         out_s, out_e   = self.model(x, orig_sr=self.orig_sr)
+        # T_mel alignment (see training_step)
+        T = min(out_s.shape[1], tgt_spatial.shape[1])
+        out_s       = out_s[:, :T]
+        tgt_spatial = tgt_spatial[:, :T]
         self.metrics.update(out_s, tgt_spatial)
         self.sem_metrics.update(out_e, tgt_spatial)
 

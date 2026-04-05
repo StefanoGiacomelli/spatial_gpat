@@ -43,11 +43,20 @@ import torchaudio
 
 class SpectralProcessor(nn.Module):
     """
-    Multichannel STFT front-end.
+    Multichannel STFT front-end with optional DOA-explicit features.
 
     Converts a raw multichannel waveform into interleaved magnitude + phase
     spectra, discarding the DC bin (index 0) and keeping only positive
     frequencies (one-sided spectrum).
+
+    Optionally appends:
+      - **Intensity vectors** (FOA, ``compute_iv=True``): 3 extra channels
+        ``I_xyz(t,f) = Re(conj(W) * XYZ)``, pointing toward the dominant source.
+        Only valid when C=4 (W,X,Y,Z FOA format).
+      - **GCC-PHAT** (MIC, ``compute_gcc=True``): ``C*(C-1)/2`` extra channels,
+        one per microphone pair.  Each channel holds the GCC-PHAT function
+        (lag domain, truncated to ``tau_max`` lags, zero-padded to ``freq_bins``)
+        providing inter-channel TDOA cues.
 
     Original Keras equivalent: cls_feature_class.py :: _spectrogram()
     The original is offline NumPy; this is an online differentiable layer.
@@ -59,24 +68,40 @@ class SpectralProcessor(nn.Module):
       - Bins kept:    nfft // 2  (positive frequencies, DC removed)
 
     Args:
-        n_fft      (int):  FFT / window size in samples. Default: 512.
-        hop_length (int):  Hop between frames in samples. Default: n_fft // 2.
+        n_fft       (int):  FFT / window size in samples. Default: 512.
+        hop_length  (int):  Hop between frames. Default: n_fft // 2.
+        compute_iv  (bool): Append intensity vectors (FOA, C==4). Default: False.
+        compute_gcc (bool): Append GCC-PHAT channels (MIC). Default: False.
+        tau_max     (int):  Max lag for GCC-PHAT (lags kept before zero-padding).
+                            Default: n_fft // 4.
 
     Input:
         x   : (batch, channels, samples)  — float32 waveform
 
     Output:
-        out : (batch, 2 * channels, time_frames, freq_bins)
-              Channels [0 : C]    → magnitude spectra (one per input channel)
-              Channels [C : 2*C]  → phase spectra     (one per input channel)
-              freq_bins = n_fft // 2  (DC bin removed from the 1-sided STFT)
+        out : (batch, out_channels, time_frames, freq_bins)
+              [0:C]         → magnitude spectra
+              [C:2C]        → phase spectra
+              [2C:2C+3]     → intensity vectors  (if compute_iv and C==4)
+              [2C:2C+P]     → GCC-PHAT channels  (if compute_gcc, P=C*(C-1)//2)
+              freq_bins = n_fft // 2
     """
 
-    def __init__(self, n_fft: int = 512, hop_length: int = None):
+    def __init__(
+        self,
+        n_fft:       int  = 512,
+        hop_length:  int  = None,
+        compute_iv:  bool = False,
+        compute_gcc: bool = False,
+        tau_max:     int  = None,
+    ):
         super().__init__()
-        self.n_fft      = n_fft
-        self.hop_length = hop_length or n_fft // 2
-        self.freq_bins  = n_fft // 2  # bins kept after removing DC
+        self.n_fft       = n_fft
+        self.hop_length  = hop_length or n_fft // 2
+        self.freq_bins   = n_fft // 2  # bins kept after removing DC
+        self.compute_iv  = compute_iv
+        self.compute_gcc = compute_gcc
+        self.tau_max     = tau_max if tau_max is not None else n_fft // 4
 
         # power=None → complex output; normalized≈'ortho'; onesided → n_fft//2+1 bins
         self.stft = torchaudio.transforms.Spectrogram(
@@ -95,22 +120,56 @@ class SpectralProcessor(nn.Module):
         B, C, _ = x.shape
 
         # Apply STFT to all channels at once via batch dimension
-        x_flat = x.reshape(B * C, -1)              # (B*C, samples)
-        spec   = self.stft(x_flat)                 # (B*C, n_fft//2+1, T)  complex
+        x_flat = x.reshape(B * C, -1)                    # (B*C, samples)
+        spec   = self.stft(x_flat)                        # (B*C, n_fft//2+1, T) complex
 
         # Drop DC bin (index 0); keep bins 1 … n_fft//2 → freq_bins = n_fft//2
-        spec = spec[:, 1:, :]                      # (B*C, freq_bins, T)
-        spec = spec.reshape(B, C, self.freq_bins, -1)  # (B, C, F, T)
+        spec   = spec[:, 1:, :]                           # (B*C, F, T)
+        spec4d = spec.reshape(B, C, self.freq_bins, -1)   # (B, C, F, T)
 
-        mag   = spec.abs()                         # (B, C, F, T)
-        phase = spec.angle()                       # (B, C, F, T)  ∈ [-π, π]
+        mag   = spec4d.abs()                              # (B, C, F, T)
+        phase = spec4d.angle()                            # (B, C, F, T) ∈ [-π, π]
 
-        # Magnitude channels first, then phase channels (matches original concat)
-        out = torch.cat([mag, phase], dim=1)       # (B, 2*C, F, T)
+        # Magnitude channels first, then phase channels
+        out = torch.cat([mag, phase], dim=1)              # (B, 2*C, F, T)
 
         # Permute to (B, 2*C, T, F): time = dim 2, freq = dim 3
-        # Matches Keras channels_first layout: (batch, 2*nb_ch, seq_len, nfft//2)
-        out = out.permute(0, 1, 3, 2).contiguous()  # (B, 2*C, T, F)
+        out = out.permute(0, 1, 3, 2).contiguous()        # (B, 2*C, T, F)
+
+        # ── Intensity vectors (FOA only, C==4) ───────────────────────────
+        if self.compute_iv and C == 4:
+            # spec4d: (B, 4, F, T) complex — W=ch0, X=ch1, Y=ch2, Z=ch3
+            W   = spec4d[:, 0:1]               # (B, 1, F, T) complex
+            XYZ = spec4d[:, 1:]                # (B, 3, F, T) complex
+            # I_xyz = Re(conj(W) * XYZ): points toward dominant source
+            iv  = (W.conj() * XYZ).real        # (B, 3, F, T)
+            iv  = iv.permute(0, 1, 3, 2).contiguous()  # (B, 3, T, F)
+            out = torch.cat([out, iv], dim=1)  # (B, 2C+3=11, T, F)
+
+        # ── GCC-PHAT (MIC, C≥2) ─────────────────────────────────────────
+        if self.compute_gcc and C >= 2:
+            pairs     = [(i, j) for i in range(C) for j in range(i + 1, C)]
+            gcc_feats = []
+            for i, j in pairs:
+                Xi = spec4d[:, i]              # (B, F, T) complex
+                Xj = spec4d[:, j]
+                # GCC-PHAT: normalise cross-spectrum by magnitude
+                num   = Xi * Xj.conj()         # (B, F, T)
+                gcc_f = num / (num.abs() + 1e-8)          # (B, F, T)
+                # IFFT along freq axis → lag domain (B, T, 2*freq_bins)
+                gcc_t = torch.fft.irfft(
+                    gcc_f.permute(0, 2, 1),    # (B, T, F)
+                    n    = self.freq_bins * 2,
+                    dim  = -1,
+                )                              # (B, T, 2*freq_bins)
+                # Keep only tau_max lags; zero-pad to freq_bins for shape match
+                gcc_t = gcc_t[:, :, :self.tau_max]        # (B, T, tau_max)
+                pad   = self.freq_bins - self.tau_max
+                gcc_t = F.pad(gcc_t, (0, pad))            # (B, T, F)
+                gcc_feats.append(gcc_t.unsqueeze(1))      # (B, 1, T, F)
+            gcc_out = torch.cat(gcc_feats, dim=1)         # (B, n_pairs, T, F)
+            out     = torch.cat([out, gcc_out], dim=1)    # (B, 2C+n_pairs, T, F)
+
         return out
 
 

@@ -198,10 +198,19 @@ class tPITLoss(nn.Module):
             doa_r_all - doa_b.unsqueeze(1).expand_as(doa_r_all)
         ).pow(2).sum(dim=-1).mean(dim=-1)                          # avg over N×3 → (BTC, P)
 
-        total = self.beta * bce_all + (1.0 - self.beta) * mse_all  # (BTC, P)
-
         # ── Select best permutation per frame (non-differentiable) ────────
-        best_idx  = total.argmin(dim=-1)                            # (BTC,)
+        # Use UNWEIGHTED BCE for permutation selection so that the DOA term
+        # contributes fairly to the choice: pos_weight (up to 50× for STARSS23)
+        # would otherwise dominate and the model would never assign tracks by DOA.
+        # The gradient still uses bce_all (with pos_weight) for class-balance correction.
+        bce_nopw = F.binary_cross_entropy_with_logits(
+            act_l_all,
+            act_b.unsqueeze(1).expand_as(act_l_all),
+            reduction='none',
+        ).mean(dim=-1)                                              # (BTC, P)
+
+        pit_cost  = self.beta * bce_nopw + (1.0 - self.beta) * mse_all  # (BTC, P)
+        best_idx  = pit_cost.argmin(dim=-1)                         # (BTC,)
         best_mask = F.one_hot(best_idx, P).float().detach()         # (BTC, P)
 
         # Gradient flows through bce_all / mse_all, not through best_idx

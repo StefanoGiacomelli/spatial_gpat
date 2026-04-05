@@ -353,11 +353,28 @@ class NASModel(nn.Module):
         # ── Input processor ──────────────────────────────────────────────
         itype = in_cfg.get('type', 'spectral')
         if itype == 'spectral':
+            _fmt    = cfg.get('data', {}).get('format', 'foa')
+            _iv     = (_fmt == 'foa')                          # intensity vectors for FOA
+            _gcc    = (_fmt == 'mic')                          # GCC-PHAT for MIC
+            _tau    = in_cfg.get('n_fft', 512) // 4           # tau_max = F//2
             self.input_proc = SpectralProcessor(
-                n_fft      = in_cfg.get('n_fft', 512),
-                hop_length = in_cfg.get('hop_length', 320),
+                n_fft       = in_cfg.get('n_fft', 512),
+                hop_length  = in_cfg.get('hop_length', 320),
+                compute_iv  = _iv,
+                compute_gcc = _gcc,
+                tau_max     = _tau,
             )
-            c_in_spatial = 2 * self.n_mics   # magnitude + phase per channel
+            _n_pairs     = self.n_mics * (self.n_mics - 1) // 2
+            c_in_spatial = 2 * self.n_mics + (3 if _iv else _n_pairs if _gcc else 0)
+
+            # Per-group InstanceNorm: each feature group has a different value range
+            # (magnitude, phase, IV/GCC) and must be normalised independently.
+            self.input_norm_mag   = nn.InstanceNorm2d(self.n_mics, affine=True)
+            self.input_norm_phase = nn.InstanceNorm2d(self.n_mics, affine=True)
+            if _iv:
+                self.input_norm_iv  = nn.InstanceNorm2d(3, affine=True)
+            if _gcc:
+                self.input_norm_gcc = nn.InstanceNorm2d(_n_pairs, affine=True)
         elif itype == 'gabor':
             self.input_proc = GaborFrontEnd(
                 n_filters     = in_cfg.get('n_filters', 128),
@@ -474,10 +491,13 @@ class NASModel(nn.Module):
         nn.init.zeros_(self.head_spatial.bias)
 
         # Activity (SED) head — outputs per-track per-class logits for BCE
+        # Bias initialised to -2.0 so sigmoid(-2) ≈ 0.12: all tracks start inactive.
+        # This avoids systematic false positives at the beginning of training
+        # (sigmoid(0) = 0.5 would sit exactly on the activity threshold).
         act_out_dim = self.n_tracks * self.n_cls
         self.head_activity = nn.Linear(d_spat_out_flat, act_out_dim)
         nn.init.xavier_uniform_(self.head_activity.weight)
-        nn.init.zeros_(self.head_activity.bias)
+        nn.init.constant_(self.head_activity.bias, -2.0)
 
         # ── Semantic head (EPANNs Splitted) ───────────────────────────────
         # fc1 and fc_audioset: fine-tunable copies of pretrained EPANNs weights.
@@ -638,6 +658,22 @@ class NASModel(nn.Module):
         # ── Spatial: input processing ────────────────────────────────────
         S = self._run_input_processor(x)             # (B, C_in, T_mel, F_in)
 
+        # ── Per-group InstanceNorm (spectral input only) ─────────────────
+        # Each feature group has a different value range and is normalised
+        # independently: magnitude [0,∞), phase [-π,π], IV/GCC [their own range].
+        if self.itype == 'spectral':
+            C = self.n_mics
+            S_mag   = self.input_norm_mag(S[:, :C])
+            S_phase = self.input_norm_phase(S[:, C:2*C])
+            parts   = [S_mag, S_phase]
+            offset  = 2 * C
+            if hasattr(self, 'input_norm_iv'):
+                parts.append(self.input_norm_iv(S[:, offset:offset + 3]))
+                offset += 3
+            if hasattr(self, 'input_norm_gcc'):
+                parts.append(self.input_norm_gcc(S[:, offset:]))
+            S = torch.cat(parts, dim=1)
+
         # ── Spatial: early modules ───────────────────────────────────────
         for mod in self.spatial_early:
             S = mod(S)                               # (B, C_early, T_mel, F_e)
@@ -696,10 +732,14 @@ class NASModel(nn.Module):
 
         # Combine into Multi-ACCDOA: norm = sigmoid(act) ∈ (0,1)
         # SELDMetrics act_thresh=0.5 ↔ sigmoid(logit) > 0.5 ↔ logit > 0
-        act_prob   = torch.sigmoid(act_logits)                # (B, T, N, C)
-        doa_unit   = F.normalize(doa_raw, dim=-1)             # (B, T, N, C, 3)
-        out_spatial = act_prob.unsqueeze(-1) * doa_unit       # (B, T, N, C, 3)
+        act_prob    = torch.sigmoid(act_logits)                # (B, T, N, C)
+        # Tanh bounds doa to [-1,1]^3: MSE vs unit-vector targets is well-scaled
+        # (no magnitude drift forcing doa_raw toward 1 while direction is correct).
+        doa_act     = torch.tanh(doa_raw)                      # (B, T, N, C, 3)
+        doa_unit    = F.normalize(doa_act, dim=-1)             # (B, T, N, C, 3)
+        out_spatial = act_prob.unsqueeze(-1) * doa_unit        # (B, T, N, C, 3)
 
         if return_components:
-            return out_spatial, out_semantic, act_logits, doa_raw
+            # Return doa_act (tanh-bounded) so tPITLoss MSE is scale-consistent
+            return out_spatial, out_semantic, act_logits, doa_act
         return out_spatial, out_semantic
