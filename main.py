@@ -401,6 +401,15 @@ def _run_experiment(
     model = NASLightningModule(cfg)
     model.set_metrics_path(metrics_path)
 
+    # Pre-populate metrics log from existing file when resuming an interrupted run
+    if was_interrupted and metrics_path.exists():
+        try:
+            with open(metrics_path) as fh:
+                model._epoch_metrics_log = json.load(fh)
+            print(f'  Metrics log restored: {len(model._epoch_metrics_log)} entries from {metrics_path.name}')
+        except Exception as exc:
+            print(f'  [WARN] Could not restore metrics log: {exc}')
+
     # 4. Callbacks ─────────────────────────────────────────────────────────────
     ckpt_cb = ModelCheckpoint(
         dirpath                 = str(exp_dir),
