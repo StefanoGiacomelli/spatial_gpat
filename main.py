@@ -105,7 +105,7 @@ EFFECTIVE_BATCH  = 16     # target effective batch size for gradient accumulatio
 _DEFAULT_EPOCHS      = 20
 _DEFAULT_BATCH_SIZE  = 4
 _DEFAULT_LR          = 5e-4
-_DEFAULT_PATIENCE    = 5
+_DEFAULT_PATIENCE    = 0   # 0 = early stopping disabled; >0 = patience in epochs
 _DEFAULT_NUM_WORKERS = 4
 # Full-clip mode by default (window_s=0 → None → variable-length clips with
 # padding collate_fn).  Use --window-s 10 --hop-s 5 to switch to windowed mode
@@ -172,7 +172,7 @@ def _parse_args():
     p.add_argument('--lr',           type=float, default=_DEFAULT_LR,
                    help='Adam learning rate.')
     p.add_argument('--patience',     type=int,   default=_DEFAULT_PATIENCE,
-                   help='EarlyStopping patience (epochs without improvement).')
+                   help='EarlyStopping patience in epochs (0 = disabled, run all --epochs).')
     p.add_argument('--limit-batches', type=int,  default=0,
                    help='Limit train/val/test batches per epoch (0 = disabled).')
     p.add_argument('--window-s',     type=float, default=_DEFAULT_WINDOW_S,
@@ -411,12 +411,14 @@ def _run_experiment(
         verbose                 = True,
         auto_insert_metric_name = False,
     )
-    early_cb = EarlyStopping(
-        monitor  = 'val_seld_score',
-        mode     = 'min',
-        patience = args.patience,
-        verbose  = True,
-    )
+    callbacks = [ckpt_cb]
+    if args.patience > 0:
+        callbacks.append(EarlyStopping(
+            monitor  = 'val_seld_score',
+            mode     = 'min',
+            patience = args.patience,
+            verbose  = True,
+        ))
 
     # 5. Device ────────────────────────────────────────────────────────────────
     if args.device is not None:
@@ -451,7 +453,7 @@ def _run_experiment(
 
     trainer_kwargs = dict(
         max_epochs              = args.epochs,
-        callbacks               = [ckpt_cb, early_cb],
+        callbacks               = callbacks,
         accelerator             = accel,
         devices                 = devices,
         gradient_clip_val       = 1.0,
