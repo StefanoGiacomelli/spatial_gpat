@@ -170,7 +170,7 @@ def _parse_args():
     p.add_argument('--batch-size',   type=int,   default=_DEFAULT_BATCH_SIZE,
                    help='Batch size (samples). Only CLI override allowed.')
     p.add_argument('--lr',           type=float, default=_DEFAULT_LR,
-                   help='Adam learning rate.')
+                   help='AdamW learning rate.')
     p.add_argument('--patience',     type=int,   default=_DEFAULT_PATIENCE,
                    help='EarlyStopping patience in epochs (0 = disabled, run all --epochs).')
     p.add_argument('--limit-batches', type=int,  default=0,
