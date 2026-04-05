@@ -485,19 +485,16 @@ class NASModel(nn.Module):
         else:
             d_spat_out_flat = d_spat_out
 
-        # DOA regression head — outputs raw Cartesian vectors (unnormalised)
-        self.head_spatial = nn.Linear(d_spat_out_flat, spat_out_dim)
-        nn.init.xavier_uniform_(self.head_spatial.weight)
-        nn.init.zeros_(self.head_spatial.bias)
+        # DOA regression head — outputs tanh-bounded Cartesian vectors (B,T,N,C,3)
+        self.head_doa = nn.Linear(d_spat_out_flat, spat_out_dim)
+        nn.init.xavier_uniform_(self.head_doa.weight)
+        nn.init.zeros_(self.head_doa.bias)
 
-        # Activity (SED) head — outputs per-track per-class logits for BCE
-        # Bias initialised to -2.0 so sigmoid(-2) ≈ 0.12: all tracks start inactive.
-        # This avoids systematic false positives at the beginning of training
-        # (sigmoid(0) = 0.5 would sit exactly on the activity threshold).
+        # SED head — outputs per-track per-class activity logits for BCE
         act_out_dim = self.n_tracks * self.n_cls
-        self.head_activity = nn.Linear(d_spat_out_flat, act_out_dim)
-        nn.init.xavier_uniform_(self.head_activity.weight)
-        nn.init.constant_(self.head_activity.bias, -2.0)
+        self.head_sed = nn.Linear(d_spat_out_flat, act_out_dim)
+        nn.init.xavier_uniform_(self.head_sed.weight)
+        nn.init.zeros_(self.head_sed.bias)
 
         # ── Semantic head (EPANNs Splitted) ───────────────────────────────
         # fc1 and fc_audioset: fine-tunable copies of pretrained EPANNs weights.
@@ -535,7 +532,8 @@ class NASModel(nn.Module):
         print(f"[NASModel] smoother_spatial={tss_cfg.get('type','bigru')}×{tss_cfg.get('n_layers',1)}")
         print(f"[NASModel] semantic=EPANNs-Splitted "
               f"(fc1→fc_audioset pretrained + head_semantic trainable 527→{self.n_cls})")
-        print(f"[NASModel] spatial head : (B, T, {self.n_tracks}, {self.n_cls}, 3) Multi-ACCDOA")
+        print(f"[NASModel] head_sed : (B, T, {self.n_tracks}, {self.n_cls}) act_logits"
+              f"  head_doa: (B, T, {self.n_tracks}, {self.n_cls}, 3) doa_tanh")
         print(f"[NASModel] semantic head: (B, T_sem, {self.n_cls}) class-presence logits (BCE)")
 
     # ------------------------------------------------------------------
@@ -627,21 +625,16 @@ class NASModel(nn.Module):
         self,
         x: torch.Tensor,
         orig_sr: Optional[int] = None,
-        return_components: bool = False,
     ):
         """
         Args:
-            x                 : (B, n_mics, T_samples) raw multichannel waveform
-            orig_sr           : source sample rate (if None, assumed == cfg.input.sr)
-            return_components : if True, also return raw act_logits and doa_raw for
-                                use with tPITLoss in the training step.
+            x       : (B, n_mics, T_samples) raw multichannel waveform
+            orig_sr : source sample rate (if None, assumed == cfg.input.sr)
 
-        Returns (return_components=False):
-            out_spatial  : (B, T, N, C, 3)  Multi-ACCDOA  [norm = sigmoid(act) in (0,1)]
-            out_semantic : (B, T_sem, C)    class-presence logits
-
-        Returns (return_components=True):
-            out_spatial, out_semantic, act_logits (B,T,N,C), doa_raw (B,T,N,C,3)
+        Returns:
+            act_logits  : (B, T, N, C)     raw SED logits (use with BCE / tPITLoss)
+            doa_tanh    : (B, T, N, C, 3)  tanh-bounded DOA vectors ∈ [-1,1]³
+            out_semantic: (B, T_sem, C)    class-presence logits (audio-tagging)
         """
         B = x.shape[0]
 
@@ -724,22 +717,11 @@ class NASModel(nn.Module):
         # ── Spatial output heads ──────────────────────────────────────────
         N, C = self.n_tracks, self.n_cls
 
-        # Raw activity logits (B, T, N*C) → (B, T, N, C)
-        act_logits = self.head_activity(spat_out).view(B, -1, N, C)
+        # SED: raw activity logits (B, T, N*C) → (B, T, N, C)
+        act_logits = self.head_sed(spat_out).view(B, -1, N, C)
 
-        # Raw DOA regression (B, T, N*C*3) → (B, T, N, C, 3)
-        doa_raw    = self.head_spatial(spat_out).view(B, -1, N, C, 3)
+        # DOA: tanh-bounded Cartesian vectors (B, T, N*C*3) → (B, T, N, C, 3)
+        # Tanh bounds output to [-1,1]³: MSE vs unit-vector targets is well-scaled.
+        doa_tanh   = torch.tanh(self.head_doa(spat_out).view(B, -1, N, C, 3))
 
-        # Combine into Multi-ACCDOA: norm = sigmoid(act) ∈ (0,1)
-        # SELDMetrics act_thresh=0.5 ↔ sigmoid(logit) > 0.5 ↔ logit > 0
-        act_prob    = torch.sigmoid(act_logits)                # (B, T, N, C)
-        # Tanh bounds doa to [-1,1]^3: MSE vs unit-vector targets is well-scaled
-        # (no magnitude drift forcing doa_raw toward 1 while direction is correct).
-        doa_act     = torch.tanh(doa_raw)                      # (B, T, N, C, 3)
-        doa_unit    = F.normalize(doa_act, dim=-1)             # (B, T, N, C, 3)
-        out_spatial = act_prob.unsqueeze(-1) * doa_unit        # (B, T, N, C, 3)
-
-        if return_components:
-            # Return doa_act (tanh-bounded) so tPITLoss MSE is scale-consistent
-            return out_spatial, out_semantic, act_logits, doa_act
-        return out_spatial, out_semantic
+        return act_logits, doa_tanh, out_semantic

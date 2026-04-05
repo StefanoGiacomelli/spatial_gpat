@@ -19,5 +19,5 @@ augmentation:
 
 training:
   # TAU-NIGENS2021 max pos_weight ~30 — cap is generous
-  pos_weight_max: 100.0
+  pos_weight_max: 20.0
   weighted_sampler: false

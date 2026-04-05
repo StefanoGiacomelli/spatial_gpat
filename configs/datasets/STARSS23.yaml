@@ -20,7 +20,7 @@ augmentation:
 training:
   # pos_weight cap: STARSS23 has extreme imbalance (max ~1368).
   # Cap prevents gradient explosions while preserving class-imbalance correction.
-  pos_weight_max: 50.0
+  pos_weight_max: 20.0
   # WeightedRandomSampler: off by default for STARSS23 (90 clips → all seen every epoch).
   # Enable if needed for very unbalanced splits.
   weighted_sampler: false

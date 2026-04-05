@@ -104,8 +104,8 @@ EFFECTIVE_BATCH  = 16     # target effective batch size for gradient accumulatio
 # Default CLI values
 _DEFAULT_EPOCHS      = 20
 _DEFAULT_BATCH_SIZE  = 4
-_DEFAULT_LR          = 1e-3
-_DEFAULT_PATIENCE    = 3
+_DEFAULT_LR          = 5e-4
+_DEFAULT_PATIENCE    = 5
 _DEFAULT_NUM_WORKERS = 4
 # Full-clip mode by default (window_s=0 → None → variable-length clips with
 # padding collate_fn).  Use --window-s 10 --hop-s 5 to switch to windowed mode

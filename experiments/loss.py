@@ -252,7 +252,7 @@ class SELDMetrics:
 
     Args:
         angle_thresh (float): angular tolerance in degrees for TP matching.
-        act_thresh   (float): ‖pred‖₂ threshold to declare a track active.
+        act_thresh   (float): sigmoid(act_logits) threshold to declare a track active.
     """
 
     def __init__(self, angle_thresh: float = 20.0, act_thresh: float = ACTIVE_THRESH):
@@ -275,21 +275,29 @@ class SELDMetrics:
     # ------------------------------------------------------------------
 
     @torch.no_grad()
-    def update(self, pred: torch.Tensor, target: torch.Tensor):
+    def update(
+        self,
+        act_logits: torch.Tensor,
+        doa_tanh:   torch.Tensor,
+        target:     torch.Tensor,
+    ):
         """
         Args:
-            pred, target : (B, T, N, C, 3)   — Multi-ACCDOA tensors
+            act_logits : (B, T, N, C)     — raw SED logits from head_sed
+            doa_tanh   : (B, T, N, C, 3)  — tanh-bounded DOA from head_doa
+            target     : (B, T, N, C, 3)  — Multi-ACCDOA ground-truth
         """
-        B, T, N, C, _ = pred.shape
+        B, T, N, C, _ = target.shape
         self._n_classes = C
-        device = pred.device
 
-        # Permute to (B, T, C, N, 3)
-        p = pred.permute(0, 1, 3, 2, 4)    # (B, T, C, N, 3)
-        t = target.permute(0, 1, 3, 2, 4)  # (B, T, C, N, 3)
+        # Permute to (B, T, C, N, *) for class-first processing
+        p = doa_tanh.permute(0, 1, 3, 2, 4)                          # (B, T, C, N, 3)
+        t = target.permute(0, 1, 3, 2, 4)                            # (B, T, C, N, 3)
 
-        p_active = p.norm(dim=-1) > self.act_thresh  # (B, T, C, N) bool
-        t_active = t.norm(dim=-1) > TARGET_THRESH    # (B, T, C, N) bool
+        # Activity: sigmoid(logit) > threshold  (not norm of combined vector)
+        p_active = (torch.sigmoid(act_logits.permute(0, 1, 3, 2))
+                    > self.act_thresh)                                # (B, T, C, N) bool
+        t_active = t.norm(dim=-1) > TARGET_THRESH                    # (B, T, C, N) bool
 
         # Flatten B, T, C → one batch dim for per-frame processing
         p_flat  = p.reshape(B * T * C, N, 3)

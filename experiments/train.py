@@ -125,8 +125,8 @@ class NASLightningModule(L.LightningModule):
         self.save_hyperparameters({'cfg': cfg})
 
         train_cfg    = cfg.get('training', {})
-        self.lambda_s = float(train_cfg.get('lambda_spatial',  0.7))
-        self.lambda_e = float(train_cfg.get('lambda_semantic', 0.3))
+        self.lambda_s = float(train_cfg.get('lambda_spatial',  0.9))
+        self.lambda_e = float(train_cfg.get('lambda_semantic', 0.1))
         angle_thresh  = float(train_cfg.get('angle_thresh',   20.0))
 
         N            = cfg['heads']['n_tracks']
@@ -165,7 +165,8 @@ class NASLightningModule(L.LightningModule):
             except Exception as exc:
                 print(f'[NASLightningModule] pos_weight unavailable: {exc}')
 
-        self.tpit_loss = tPITLoss(N=N, beta=0.5, pos_weight=pos_weight)
+        beta_sed       = float(train_cfg.get('beta_sed', 0.3))
+        self.tpit_loss = tPITLoss(N=N, beta=beta_sed, pos_weight=pos_weight)
         self.sem_loss  = SemanticPresenceLoss(pos_weight=pos_weight)
         self.metrics     = SELDMetrics(angle_thresh=angle_thresh)
         self.sem_metrics = SemanticClassificationMetrics(n_classes)
@@ -219,23 +220,19 @@ class NASLightningModule(L.LightningModule):
         ``train/loss_bce`` (epoch).
         """
         x, tgt_spatial = batch                           # tgt: (B, T_mel, N, C, 3)
-        out_s, out_e, act_logits, doa_raw = self.model(
-            x, orig_sr=self.orig_sr, return_components=True
-        )
-        # out_s     : (B, T_mel, N, C, 3)  Multi-ACCDOA (norm = sigmoid(act))
-        # act_logits: (B, T_mel, N, C)     raw SED logits for tPIT BCE
-        # doa_raw   : (B, T_mel, N, C, 3)  tanh-bounded DOA for tPIT MSE
+        act_logits, doa_tanh, out_e = self.model(x, orig_sr=self.orig_sr)
+        # act_logits: (B, T_mel, N, C)     raw SED logits
+        # doa_tanh  : (B, T_mel, N, C, 3)  tanh-bounded DOA ∈ [-1,1]³
         # out_e     : (B, T_sem, C)        class-presence logits
 
         # T_mel alignment: resampling rounding may produce ±1 frame difference
         # between padded audio (full-clip mode) and pre-computed target T.
         T = min(act_logits.shape[1], tgt_spatial.shape[1])
         act_logits  = act_logits[:, :T]
-        doa_raw     = doa_raw[:, :T]
-        out_s       = out_s[:, :T]
+        doa_tanh    = doa_tanh[:, :T]
         tgt_spatial = tgt_spatial[:, :T]
 
-        loss_tpit = self.tpit_loss(act_logits, doa_raw, tgt_spatial)
+        loss_tpit = self.tpit_loss(act_logits, doa_tanh, tgt_spatial)
         loss_bce  = self.sem_loss(out_e, tgt_spatial)    # downsamples tgt internally
         loss = self.lambda_s * loss_tpit + self.lambda_e * loss_bce
 
@@ -263,25 +260,22 @@ class NASLightningModule(L.LightningModule):
         batch_idx : int
         """
         x, tgt_spatial = batch
-        out_s, out_e, act_logits, doa_raw = self.model(
-            x, orig_sr=self.orig_sr, return_components=True
-        )
+        act_logits, doa_tanh, out_e = self.model(x, orig_sr=self.orig_sr)
 
         # T_mel alignment (see training_step)
         T = min(act_logits.shape[1], tgt_spatial.shape[1])
         act_logits  = act_logits[:, :T]
-        doa_raw     = doa_raw[:, :T]
-        out_s       = out_s[:, :T]
+        doa_tanh    = doa_tanh[:, :T]
         tgt_spatial = tgt_spatial[:, :T]
 
-        loss_tpit = self.tpit_loss(act_logits, doa_raw, tgt_spatial)
+        loss_tpit = self.tpit_loss(act_logits, doa_tanh, tgt_spatial)
         loss_bce  = self.sem_loss(out_e, tgt_spatial)
 
         self.log('val/loss_tpit', loss_tpit, on_epoch=True, sync_dist=True)
         self.log('val/loss_bce',  loss_bce,  on_epoch=True, sync_dist=True)
 
-        self.metrics.update(out_s, tgt_spatial)       # SELD metrics
-        self.sem_metrics.update(out_e, tgt_spatial)   # semantic metrics
+        self.metrics.update(act_logits, doa_tanh, tgt_spatial)   # SELD metrics
+        self.sem_metrics.update(out_e, tgt_spatial)               # semantic metrics
 
     def on_validation_epoch_end(self) -> None:
         """Flush both metric accumulators, log all val metrics, update JSON log."""
@@ -326,12 +320,13 @@ class NASLightningModule(L.LightningModule):
         batch_idx : int
         """
         x, tgt_spatial = batch
-        out_s, out_e   = self.model(x, orig_sr=self.orig_sr)
+        act_logits, doa_tanh, out_e = self.model(x, orig_sr=self.orig_sr)
         # T_mel alignment (see training_step)
-        T = min(out_s.shape[1], tgt_spatial.shape[1])
-        out_s       = out_s[:, :T]
+        T = min(act_logits.shape[1], tgt_spatial.shape[1])
+        act_logits  = act_logits[:, :T]
+        doa_tanh    = doa_tanh[:, :T]
         tgt_spatial = tgt_spatial[:, :T]
-        self.metrics.update(out_s, tgt_spatial)
+        self.metrics.update(act_logits, doa_tanh, tgt_spatial)
         self.sem_metrics.update(out_e, tgt_spatial)
 
     def on_test_epoch_end(self) -> None:
