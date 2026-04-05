@@ -111,7 +111,7 @@ _DEFAULT_NUM_WORKERS = 4
 # padding collate_fn).  Use --window-s 10 --hop-s 5 to switch to windowed mode
 # if GPU/MPS memory is constrained (~60 s clips can require >8 GB per batch).
 _DEFAULT_WINDOW_S    = 10.0    # 0 = full-clip mode (no windowing)
-_DEFAULT_HOP_S       =  5.0    # unused in full-clip mode
+_DEFAULT_HOP_S       = 10.0    # unused in full-clip mode
 
 # Dataset root paths
 DATASET_ROOTS = {
