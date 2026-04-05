@@ -271,8 +271,8 @@ def _build_cfg(exp_yaml_path: Path, args) -> dict:
         'lr':              args.lr,
         'epochs':          args.epochs,
         'batch_size':      args.batch_size,
-        'lambda_spatial':  0.7,
-        'lambda_semantic': 0.3,
+        'lambda_spatial':  0.9,
+        'lambda_semantic': 0.1,
         'angle_thresh':    20.0,
     }
 

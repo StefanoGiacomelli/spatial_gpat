@@ -4,7 +4,7 @@
 # CLI --batch-size always overrides training.batch_size.
 
 augmentation:
-  enabled: true
+  enabled: false
   # FOA augmentations (format: foa)
   p_rotate:    0.5     # azimuth rotation, theta ~ U(-180, 180 deg)
   p_gain:      0.4     # global gain, g ~ exp(U(min_db, max_db))
