@@ -216,8 +216,9 @@ class tPITLoss(nn.Module):
         # Gradient flows through bce_all / mse_all, not through best_idx
         loss_sed = (bce_all * best_mask).sum(dim=-1).mean()
         loss_doa = (mse_all * best_mask).sum(dim=-1).mean()
+        total    = self.beta * loss_sed + (1.0 - self.beta) * loss_doa
 
-        return self.beta * loss_sed + (1.0 - self.beta) * loss_doa
+        return total, loss_sed, loss_doa
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -357,18 +358,17 @@ class SELDMetrics:
     def compute(self) -> Dict[str, float]:
         C = self._n_classes
 
-        # LE_CD: per-class mean angular error → macro-average
-        le_cd = sum(
-            self._angle_sum[c] / self._tp_loc[c] if self._tp_loc[c] > 0 else 0.0
-            for c in range(C)
-        ) / C if C > 0 else 0.0
+        # LE_CD: per-class mean angular error, averaged only over classes with ≥1 TP
+        # (matches DCASE baseline: classes with 0 TP are excluded, not counted as 0)
+        le_vals = [self._angle_sum[c] / self._tp_loc[c]
+                   for c in range(C) if self._tp_loc[c] > 0]
+        le_cd = sum(le_vals) / len(le_vals) if le_vals else 0.0
 
-        # LR_CD: per-class localisation recall → macro-average
-        lr_cd = sum(
-            self._tp[c] / (self._tp[c] + self._fn[c])
-            if (self._tp[c] + self._fn[c]) > 0 else 0.0
-            for c in range(C)
-        ) / C if C > 0 else 0.0
+        # LR_CD: per-class localisation recall, averaged only over classes with ≥1 ref event
+        # (matches DCASE baseline: classes with 0 reference events are excluded)
+        lr_vals = [self._tp[c] / (self._tp[c] + self._fn[c])
+                   for c in range(C) if (self._tp[c] + self._fn[c]) > 0]
+        lr_cd = sum(lr_vals) / len(lr_vals) if lr_vals else 0.0
 
         # ER_20°: global (sum per-class counts), DCASE formula
         tp_g  = sum(self._tp.values())

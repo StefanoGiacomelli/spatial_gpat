@@ -271,8 +271,9 @@ def _build_cfg(exp_yaml_path: Path, args) -> dict:
         'lr':              args.lr,
         'epochs':          args.epochs,
         'batch_size':      args.batch_size,
-        'lambda_spatial':  0.9,
-        'lambda_semantic': 0.1,
+        'lambda_spatial':  0.9,   # weight of tPIT (spatial) in total loss
+        'lambda_semantic': 0.1,   # weight of BCE (semantic) in total loss
+        'beta_sed':        0.3,   # SED/DOA split inside tPIT (DOA = 1-beta = 0.7)
         'angle_thresh':    20.0,
     }
 

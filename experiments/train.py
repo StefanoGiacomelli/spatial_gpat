@@ -232,8 +232,8 @@ class NASLightningModule(L.LightningModule):
         doa_tanh    = doa_tanh[:, :T]
         tgt_spatial = tgt_spatial[:, :T]
 
-        loss_tpit = self.tpit_loss(act_logits, doa_tanh, tgt_spatial)
-        loss_bce  = self.sem_loss(out_e, tgt_spatial)    # downsamples tgt internally
+        loss_tpit, _, _ = self.tpit_loss(act_logits, doa_tanh, tgt_spatial)
+        loss_bce        = self.sem_loss(out_e, tgt_spatial)
         loss = self.lambda_s * loss_tpit + self.lambda_e * loss_bce
 
         self.log('train/loss',      loss,      on_step=True,  on_epoch=True,
@@ -268,10 +268,12 @@ class NASLightningModule(L.LightningModule):
         doa_tanh    = doa_tanh[:, :T]
         tgt_spatial = tgt_spatial[:, :T]
 
-        loss_tpit = self.tpit_loss(act_logits, doa_tanh, tgt_spatial)
-        loss_bce  = self.sem_loss(out_e, tgt_spatial)
+        loss_tpit, loss_sed, loss_doa = self.tpit_loss(act_logits, doa_tanh, tgt_spatial)
+        loss_bce = self.sem_loss(out_e, tgt_spatial)
 
         self.log('val/loss_tpit', loss_tpit, on_epoch=True, sync_dist=True)
+        self.log('val/loss_sed',  loss_sed,  on_epoch=True, sync_dist=True)
+        self.log('val/loss_doa',  loss_doa,  on_epoch=True, sync_dist=True)
         self.log('val/loss_bce',  loss_bce,  on_epoch=True, sync_dist=True)
 
         self.metrics.update(act_logits, doa_tanh, tgt_spatial)   # SELD metrics
