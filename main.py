@@ -111,7 +111,7 @@ _DEFAULT_NUM_WORKERS = 4
 # padding collate_fn).  Use --window-s 10 --hop-s 5 to switch to windowed mode
 # if GPU/MPS memory is constrained (~60 s clips can require >8 GB per batch).
 _DEFAULT_WINDOW_S    = 10.0    # 0 = full-clip mode (no windowing)
-_DEFAULT_HOP_S       = 10.0    # unused in full-clip mode
+_DEFAULT_HOP_S       =  2.5    # unused in full-clip mode
 
 # Dataset root paths
 DATASET_ROOTS = {
@@ -170,7 +170,7 @@ def _parse_args():
     p.add_argument('--batch-size',   type=int,   default=_DEFAULT_BATCH_SIZE,
                    help='Batch size (samples). Only CLI override allowed.')
     p.add_argument('--lr',           type=float, default=_DEFAULT_LR,
-                   help='AdamW learning rate.')
+                   help='Adam learning rate.')
     p.add_argument('--patience',     type=int,   default=_DEFAULT_PATIENCE,
                    help='EarlyStopping patience in epochs (0 = disabled, run all --epochs).')
     p.add_argument('--limit-batches', type=int,  default=0,

@@ -8,7 +8,7 @@ Wraps ``NASModel`` into a ``pl.LightningModule`` with:
   * ``on_validation_epoch_end``    — flush and log SELD + semantic metrics; JSON log
   * ``test_step``                  — accumulate SELD + semantic metrics
   * ``on_test_epoch_end``          — flush and log all metrics + confusion matrix to JSON
-  * ``configure_optimizers``       — AdamW + CosineAnnealingLR scheduler
+  * ``configure_optimizers``       — Adam + CosineAnnealingLR scheduler
   * ``set_metrics_path(path)``     — inject JSON log path after construction
 
 Loss design
@@ -365,7 +365,7 @@ class NASLightningModule(L.LightningModule):
     # ------------------------------------------------------------------
 
     def configure_optimizers(self):
-        """Return AdamW optimizer with CosineAnnealingLR scheduler.
+        """Return Adam optimizer with CosineAnnealingLR scheduler.
 
         Learning rate is read from ``cfg['training']['lr']``.
         The scheduler decays LR from ``lr`` to ``lr * 0.1`` over ``max_epochs``
@@ -377,7 +377,7 @@ class NASLightningModule(L.LightningModule):
         """
         lr        = float(self.hparams['cfg'].get('training', {}).get('lr', 5e-4))
         params    = [p for p in self.model.parameters() if p.requires_grad]
-        optimizer = torch.optim.AdamW(params, lr=lr)
+        optimizer = torch.optim.Adam(params, lr=lr)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer,
             T_max   = self.trainer.max_epochs,
