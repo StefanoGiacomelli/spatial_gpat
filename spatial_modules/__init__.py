@@ -45,7 +45,6 @@ from .raw_waveform_modules import (
     LearnableGaborFilterBank,
     GaborFrontEnd,
     FormantEnhancementModule,
-    MaxCorrFilterBank,
 )
 
 __all__ = [
@@ -62,5 +61,5 @@ __all__ = [
     "MHA_MGU",
     # Raw-waveform
     "LearnableGaborFilterBank", "GaborFrontEnd",
-    "FormantEnhancementModule", "MaxCorrFilterBank",
+    "FormantEnhancementModule",
 ]

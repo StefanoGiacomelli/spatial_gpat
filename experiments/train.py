@@ -4,7 +4,7 @@ NASLightningModule — PyTorch Lightning Training Wrapper for NASModel
 Wraps ``NASModel`` into a ``pl.LightningModule`` with:
 
   * ``training_step``              — tPIT loss (spatial) + BCE loss (semantic)
-  * ``validation_step``            — ADPIT + BCE losses; SELD + semantic metrics
+  * ``validation_step``            — tPIT + BCE losses; SELD + semantic metrics
   * ``on_validation_epoch_end``    — flush and log SELD + semantic metrics; JSON log
   * ``test_step``                  — accumulate SELD + semantic metrics
   * ``on_test_epoch_end``          — flush and log all metrics + confusion matrix to JSON
@@ -18,8 +18,9 @@ Loss design
     L = \\lambda_s \\cdot L_{\\text{tPIT}}(\\text{act\\_logits}, \\text{doa\\_raw}, T_s)
       + \\lambda_e \\cdot L_{\\text{BCE}}(P_e, \\text{presence}(T_s))
 
-where :math:`P_s \\in \\mathbb{R}^{B \\times T \\times N \\times C \\times 3}` is the
-spatial Multi-ACCDOA prediction and :math:`P_e \\in \\mathbb{R}^{B \\times T_{\\text{sem}}
+where ``act_logits`` :math:`\\in \\mathbb{R}^{B \\times T \\times N \\times C}` are the
+raw SED logits, ``doa_tanh`` :math:`\\in \\mathbb{R}^{B \\times T \\times N \\times C \\times 3}`
+are the tanh-bounded DOA vectors, and :math:`P_e \\in \\mathbb{R}^{B \\times T_{\\text{sem}}
 \\times C}` is the semantic class-presence logit tensor.  The BCE target is derived
 from the spatial target by nearest-neighbour downsampling followed by a per-class
 binary activity collapse (``any`` over tracks).
@@ -38,8 +39,8 @@ Training (per step + per epoch):
   ``train/loss``, ``train/loss_tpit``, ``train/loss_bce``
 
 Validation (per epoch):
-  ``val/loss_tpit``, ``val/loss_bce``, ``val/LE_CD``, ``val/LR_CD``,
-  ``val/ER_20``, ``val/F_20``, ``val/SELD_score``
+  ``val/loss_tpit``, ``val/loss_sed``, ``val/loss_doa``, ``val/loss_bce``,
+  ``val/LE_CD``, ``val/LR_CD``, ``val/ER_20``, ``val/F_20``, ``val/SELD_score``
 
 References
 ----------
@@ -96,11 +97,13 @@ class NASLightningModule(L.LightningModule):
     ----------------------------
     Training (per step + per epoch):
       train/loss        — weighted total loss
-      train/loss_adpit  — spatial head ADPIT loss
+      train/loss_tpit   — spatial tPIT loss (β·L_SED + (1-β)·L_DOA)
       train/loss_bce    — semantic head BCE loss (auxiliary)
 
     Validation (per epoch):
-      val/loss_adpit    — spatial head ADPIT loss
+      val/loss_tpit     — spatial tPIT loss
+      val/loss_sed      — SED component of tPIT (β-weighted BCE)
+      val/loss_doa      — DOA component of tPIT ((1-β)-weighted MSE)
       val/loss_bce      — semantic head BCE loss
       val/LE_CD         — mean angular error for TP events (°)
       val/LR_CD         — localisation recall
@@ -108,8 +111,6 @@ class NASLightningModule(L.LightningModule):
       val/F_20          — location-dependent F-score      (20° tolerance)
       val/SELD_score    — combined SELD score (lower = better)
       val/sem_accuracy  — multilabel accuracy (macro)
-      val/sem_precision — multilabel precision (macro)
-      val/sem_recall    — multilabel recall (macro)
       val/sem_f1        — multilabel F1 (macro)
       val/sem_auroc     — multilabel AUROC (macro)
 
@@ -165,7 +166,7 @@ class NASLightningModule(L.LightningModule):
             except Exception as exc:
                 print(f'[NASLightningModule] pos_weight unavailable: {exc}')
 
-        beta_sed       = float(train_cfg.get('beta_sed', 0.3))
+        beta_sed       = float(train_cfg.get('beta_sed', 0.5))
         self.tpit_loss = tPITLoss(N=N, beta=beta_sed, pos_weight=pos_weight)
         self.sem_loss  = SemanticPresenceLoss(pos_weight=pos_weight)
         self.metrics     = SELDMetrics(angle_thresh=angle_thresh)
@@ -216,7 +217,7 @@ class NASLightningModule(L.LightningModule):
 
         Logged keys
         -----------
-        ``train/loss`` (step + epoch), ``train/loss_adpit`` (epoch),
+        ``train/loss`` (step + epoch), ``train/loss_tpit`` (epoch),
         ``train/loss_bce`` (epoch).
         """
         x, tgt_spatial = batch                           # tgt: (B, T_mel, N, C, 3)

@@ -1,41 +1,58 @@
 """
-ADPIT Loss and SELD Metrics — Multi-ACCDOA Training
-=====================================================
-Implements three components for end-to-end SELD training:
+tPIT Loss and SELD Metrics — Separate SED/DOA Heads
+====================================================
+Implements four components for end-to-end SELD training:
 
-  ADPITLoss                     — Auxiliary Duplicating Permutation Invariant Training
-                                  loss for Multi-ACCDOA tensors (class-wise, vectorised).
+  tPITLoss                      — Track-wise Permutation Invariant Training loss.
+                                  Separate BCE (SED) + MSE (DOA) objectives on
+                                  independent head outputs; standard N! permutation
+                                  search (not surjections).
   SELDMetrics                   — LE_CD, LR_CD, ER_20°, F_20°, SELD_score accumulator
-                                  for validation.
+                                  aligned with the DCASE 2023 baseline.
   SemanticPresenceLoss          — Auxiliary BCE loss for the semantic head.
   SemanticClassificationMetrics — Torchmetrics-backed multilabel accuracy/F1/AUROC +
                                   confusion matrix for val and test.
 
-Output tensor convention (shared with NASModel)
------------------------------------------------
-:math:`P \\in \\mathbb{R}^{B \\times T \\times N \\times C \\times 3}`
+Separation of SED and DOA heads
+--------------------------------
+Unlike Multi-ACCDOA / ADPIT (which encoded activity as the norm of a unified
+activity-coupled direction vector), this implementation uses:
 
-:math:`P[b,t,n,c,:] = \\text{activity} \\times \\hat{u}_{DOA}` (Cartesian xyz).
-A track is active iff :math:`\\|P[b,t,n,c,:]\\|_2 > \\text{threshold}`.
+  * ``head_sed``  → raw activity logits :math:`\\in \\mathbb{R}^{B \\times T \\times N \\times C}`
+  * ``head_doa``  → tanh-bounded Cartesian DOA :math:`\\in \\mathbb{R}^{B \\times T \\times N \\times C \\times 3}`
 
-ADPIT algorithm (per class :math:`c`, per frame :math:`t`)
+Activity detection at inference: :math:`\\sigma(\\text{act\\_logits}) > 0.5` (not vector norm).
+Direction targets: unit Cartesian vectors when the source is active, zero vector when silent.
+
+tPIT algorithm (per class :math:`c`, per frame :math:`t`)
 ----------------------------------------------------------
-1. Count :math:`M` active target tracks (:math:`\\|\\text{target}\\|_2 > \\epsilon`).
-2. If :math:`M=0`: single candidate (all zeros) — push predictions to zero.
-3. If :math:`M>0`: enumerate all surjective functions
-   :math:`f:\\{0\\ldots N-1\\}\\to M_{\\text{active}}`.
-4. MSE per candidate, take minimum → frame loss.
-5. Average over :math:`B \\times T \\times C` → scalar.
+1. Derive activity target: :math:`a[n,c] = 1` iff :math:`\\|\\text{target}[n,c,:]\\|_2 > 0.5`.
+2. Enumerate all :math:`N!` permutations :math:`\\pi` of :math:`N` tracks.
+3. Per-permutation cost (for permutation selection, **unweighted** to avoid pos_weight bias):
+
+   .. math::
+       C(\\pi) = \\beta \\cdot \\text{BCE}_{\\text{nopw}}(\\text{act}[\\pi], a)
+              + (1-\\beta) \\cdot \\text{MSE}(\\text{doa}[\\pi], d)
+
+4. Select best permutation: :math:`\\pi^* = \\arg\\min_\\pi C(\\pi)` (non-differentiable).
+5. Gradient loss (with pos_weight for class-imbalance correction):
+
+   .. math::
+       L_{\\text{tPIT}} = \\beta \\cdot \\text{BCE}_{\\text{pw}}(\\text{act}[\\pi^*], a)
+                        + (1-\\beta) \\cdot \\text{MSE}(\\text{doa}[\\pi^*], d)
+
+6. Returns ``(total, loss_sed, loss_doa)`` for per-component monitoring.
 
 References
 ----------
-K. Shimada, Y. Koyama, S. Takahashi, N. Takahashi, E. Tsunoo, and Y. Mitsufuji,
-"ACCDOA: Activity-Coupled Cartesian Direction of Arrival Representation for Sound
-Event Localization and Detection," ICASSP 2021.
+S. Adavanne et al., "Sound Event Localization and Detection of Overlapping
+Sources Using Convolutional Recurrent Neural Networks," IEEE JSTSP 2019.
 
-K. Shimada, Y. Koyama, N. Takahashi, S. Takahashi, E. Tsunoo, and Y. Mitsufuji,
-"Multi-ACCDOA: Localizing and Detecting Overlapping Sounds from the Same Class
-with Auxiliary Duplicating Permutation Invariant Training," ICASSP 2022.
+Y. Cao et al., "An Improved Event-Independent Network for Polyphonic Sound
+Event Localization and Detection," DCASE Workshop 2021.
+
+A. Singh Boparai et al., "Efficient Pre-trained Audio Neural Networks via
+Passive Filter Pruning," DCASE Workshop 2024.
 
 Author
 ------
@@ -61,8 +78,8 @@ from torchmetrics.classification import (
 )
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-ACTIVE_THRESH = 0.5   # ‖pred‖₂ threshold used to detect activity at inference
-TARGET_THRESH = 0.5   # ‖target‖₂ threshold used to mark active targets
+ACTIVE_THRESH = 0.5   # sigmoid(act_logits) threshold used to detect activity at inference
+TARGET_THRESH = 0.5   # ‖target‖₂ threshold used to mark active targets (norm=1 when active)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -116,13 +133,14 @@ class tPITLoss(nn.Module):
                      to the correct device automatically.
 
     Forward:
-        act_logits : (B, T, N, C)     — raw activity logits from head_activity
-        doa_raw    : (B, T, N, C, 3)  — raw DOA vectors from head_spatial
-                                        (need not be unit-normalised)
-        target     : (B, T, N, C, 3)  — Multi-ACCDOA targets
+        act_logits : (B, T, N, C)     — raw SED logits from ``head_sed``
+        doa_raw    : (B, T, N, C, 3)  — tanh-bounded DOA vectors from ``head_doa``
+                                        (tanh output, not unit-normalised)
+        target     : (B, T, N, C, 3)  — Multi-ACCDOA ground-truth targets
+                                        (norm=1 when active, norm=0 when silent)
 
     Returns:
-        scalar loss
+        (total, loss_sed, loss_doa) — scalar tensors for total loss and per-component monitoring
     """
 
     def __init__(self, N: int, beta: float = 0.5,
@@ -150,12 +168,12 @@ class tPITLoss(nn.Module):
         """Compute tPIT loss.
 
         Args:
-            act_logits : (B, T, N, C)
-            doa_raw    : (B, T, N, C, 3)
-            target     : (B, T, N, C, 3)
+            act_logits : (B, T, N, C)     — raw SED logits from head_sed
+            doa_raw    : (B, T, N, C, 3)  — tanh-bounded DOA from head_doa
+            target     : (B, T, N, C, 3)  — Multi-ACCDOA ground-truth
 
         Returns:
-            scalar loss
+            (total, loss_sed, loss_doa) — all scalar tensors
         """
         B, T, N, C, _ = target.shape
         P   = self.perm_tensor.shape[0]   # N!
@@ -246,8 +264,8 @@ class SELDMetrics:
 
         metrics = SELDMetrics(angle_thresh=20.0)
         for batch in val_loader:
-            pred, target = model(x), batch_target
-            metrics.update(pred, target)
+            act_logits, doa_tanh, _ = model(x)
+            metrics.update(act_logits, doa_tanh, batch_target)
         results = metrics.compute()   # dict with float values
         metrics.reset()
 

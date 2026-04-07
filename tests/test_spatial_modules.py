@@ -57,7 +57,7 @@ from spatial_modules import (
     MultiScaleChannelAttention, ResNetBlock, ConformerBlock, AttentiveStatisticsPooling,
     DoubleConv, CrossStitching, PositionalEncoder, TrackTransformer,
     MHA_MGU,
-    LearnableGaborFilterBank, GaborFrontEnd, FormantEnhancementModule, MaxCorrFilterBank,
+    LearnableGaborFilterBank, GaborFrontEnd, FormantEnhancementModule,
 )
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -269,7 +269,6 @@ def _build_registry(cfgs: dict) -> List[dict]:
     gfb = raw['gabor_filter_bank']
     gfe = raw['gabor_front_end']
     fem = raw['formant_enhancement']
-    mcf = raw['max_corr_filter_bank']
     adv = ada['cross_stitch_bridge']
 
     # Derived dims
@@ -292,11 +291,9 @@ def _build_registry(cfgs: dict) -> List[dict]:
     t_smp  = raw['test']['t_samples']  # 24000
     n_sp   = raw['test']['n_spatial']  # 7
     T_gab  = (t_smp - gfb['kernel_length']) // gfb['stride'] + 1   # ~39
-    T_mcf  = (t_smp - mcf['kernel_length']) // mcf['stride'] + 1   # ~314
 
     n_mics  = gfe['n_mics']            # 4
     nf_gab  = gfb['n_filters']         # 128
-    nf_mcf  = mcf['n_filters']         # 256
 
     T_con  = con['test']['time_frames']  # 250
     F_con  = con['test']['freq_bins']    # 64
@@ -488,17 +485,6 @@ def _build_registry(cfgs: dict) -> List[dict]:
             'input_fn': t(fem['n_channels'], T_gab, nf_gab),
             'in_desc':  f'(B,{fem["n_channels"]},{T_gab},{nf_gab})',
             'out_desc': 'same',
-        },
-        {
-            'name':     'MaxCorrFilterBank',
-            'cls':      MaxCorrFilterBank,
-            'kwargs':   dict(n_filters=mcf['n_filters'],
-                             kernel_length=mcf['kernel_length'],
-                             stride=mcf['stride'],
-                             n_channels=mcf['n_channels']),
-            'input_fn': t(mcf['n_channels'], t_smp),
-            'in_desc':  f'(B,{mcf["n_channels"]},{t_smp})',
-            'out_desc': f'(B,{nf_mcf},{T_mcf},{mcf["n_channels"]})',
         },
     ]
     return registry

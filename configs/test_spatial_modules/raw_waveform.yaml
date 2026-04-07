@@ -1,5 +1,4 @@
 # Raw-waveform front-ends
-# SoundDet (ICML 2021) — MaxCorr: n_filters=256, kernel=481, stride=75, sr=24000
 # SoundDoA (Interspeech 2022) — Gabor: n_filters=128, kernel=1024, stride=600, sr=24000
 
 gabor_filter_bank:
@@ -24,14 +23,8 @@ formant_enhancement:
   n_channels: 7           # n_spatial = 1 + 2*(n_mics-1) for 4-mic FOA
   kernel_size: [3, 1]
 
-max_corr_filter_bank:
-  n_filters: 256          # SoundDet value
-  kernel_length: 481
-  stride: 75              # SoundDet value; gives ~314 frames/s at 24 kHz
-  n_channels: 4
-
 test:
   batch_size: 1
   n_mics: 4
-  t_samples: 24000        # 1 s at 24 kHz (4 s paper value would give 1274 frames for MaxCorr)
+  t_samples: 24000        # 1 s at 24 kHz
   n_spatial: 7            # 1 + 2*(4-1)

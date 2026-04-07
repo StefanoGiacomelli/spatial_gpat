@@ -1,0 +1,9 @@
+config_group,config_name,input_type,spatial_early,spatial_late,smoother,total_params,trainable_params,memory_mb,gflops,t_ms,out_act_shape,out_doa_shape,out_semantic_shape,status
+foa_shallow_gab,exp_gab_cb_fe_bg,gab,cb,fe,bg,28025623,26942167,106.95,39.689,228.5,"(1, 3001, 2, 13)","(1, 3001, 2, 13, 3)","(1, 93, 13)",OK
+foa_shallow_gab,exp_gab_cb_fe_mg,gab,cb,fe,mg,27646999,26563543,105.50,38.650,525.3,"(1, 3001, 2, 13)","(1, 3001, 2, 13, 3)","(1, 93, 13)",OK
+foa_shallow_gab,exp_gab_cb_tt_bg,gab,cb,tt,bg,28700566,27617110,109.52,33.830,154.9,"(1, 3001, 2, 13)","(1, 3001, 2, 13, 3)","(1, 93, 13)",OK
+foa_shallow_gab,exp_gab_cb_tt_mg,gab,cb,tt,mg,28043158,26959702,107.02,32.201,453.7,"(1, 3001, 2, 13)","(1, 3001, 2, 13, 3)","(1, 93, 13)",OK
+foa_shallow_gab,exp_gab_rn_fe_bg,gab,rn,fe,bg,28067607,26984151,107.11,51.029,279.1,"(1, 3001, 2, 13)","(1, 3001, 2, 13, 3)","(1, 93, 13)",OK
+foa_shallow_gab,exp_gab_rn_fe_mg,gab,rn,fe,mg,27688983,26605527,105.67,49.990,565.9,"(1, 3001, 2, 13)","(1, 3001, 2, 13, 3)","(1, 93, 13)",OK
+foa_shallow_gab,exp_gab_rn_tt_bg,gab,rn,tt,bg,28742550,27659094,109.69,45.170,206.6,"(1, 3001, 2, 13)","(1, 3001, 2, 13, 3)","(1, 93, 13)",OK
+foa_shallow_gab,exp_gab_rn_tt_mg,gab,rn,tt,mg,28085142,27001686,107.18,43.541,507.6,"(1, 3001, 2, 13)","(1, 3001, 2, 13, 3)","(1, 93, 13)",OK

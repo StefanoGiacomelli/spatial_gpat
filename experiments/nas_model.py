@@ -3,11 +3,12 @@ NASModel — Spatial × Semantic SELD Pipeline
 ============================================
 Configurable end-to-end model that combines:
 
-  * A spatial front-end (SpectralProcessor / GaborFrontEnd / MaxCorrFilterBank)
+  * A spatial front-end (SpectralProcessor / GaborFrontEnd)
   * A semantic backbone (SplitEPANNs — E-PANNs with per-group freeze/init)
   * Two optional MSCA-enhanced CrossStitchBridges (early + late)
   * Spatial feature processing stacks (homologous NAS modules)
-  * A spatial track smoother (BiGRU or MHA-MGU) → Multi-ACCDOA head
+  * A spatial track smoother (BiGRU or MHA-MGU) → separate ``head_sed`` (activity logits)
+    and ``head_doa`` (tanh-bounded Cartesian DOA) — trained with tPITLoss
   * A semantic head using pretrained EPANNs fc1+fc_audioset (EPANNs Splitted)
 
 Data flow
@@ -33,7 +34,8 @@ Data flow
         S_late, h_late = bridge_late(S_late, h_late)
 
     Spatial smoother: mean(F) → (B, T, C_l) → smoother → (B, T, D_s)
-        → FC head → reshape → (B, T, N_tracks, C_classes, 3)
+        → head_sed → (B, T, N_tracks, C_classes)          # raw SED logits
+        → head_doa → tanh → (B, T, N_tracks, C_classes, 3) # bounded DOA
 
     Semantic (EPANNs Splitted):
         h_late mean(F) → (B, T_sem, 1024)
@@ -70,8 +72,8 @@ DCASE Workshop 2021.
 A. Singh Boparai et al., "Efficient Pre-trained Audio Neural Networks via
 Passive Filter Pruning," DCASE Workshop 2024.
 
-K. Shimada et al., "Multi-ACCDOA: Localizing and Detecting Overlapping
-Sounds," ICASSP 2022.
+Y. Cao et al., "An Improved Event-Independent Network for Polyphonic Sound
+Event Localization and Detection," DCASE Workshop 2021.  (tPIT design reference)
 
 Author
 ------
@@ -95,7 +97,7 @@ from spatial_modules import (
     ResNetBlock,
     TrackTransformer,
     MHA_MGU,
-    GaborFrontEnd, MaxCorrFilterBank, FormantEnhancementModule,
+    GaborFrontEnd, FormantEnhancementModule,
 )
 
 
@@ -388,14 +390,6 @@ class NASModel(nn.Module):
             )
             fmt = in_cfg.get('format', 'foa')
             c_in_spatial = (1 + 2 * (self.n_mics - 1)) if fmt == 'foa' else self.n_mics
-        elif itype == 'maxcorr':
-            self.input_proc = MaxCorrFilterBank(
-                n_filters     = in_cfg.get('n_filters', 64),
-                kernel_length = in_cfg.get('kernel_length', 481),
-                stride        = in_cfg.get('stride', 320),
-                n_channels    = self.n_mics,
-            )
-            c_in_spatial = in_cfg.get('n_filters', 64)
         else:
             raise ValueError(f"[NASModel] Unknown input type: '{itype}'")
 
@@ -475,7 +469,7 @@ class NASModel(nn.Module):
             nn.init.normal_(self.mhamgu_expand.weight, std=0.01)
             nn.init.zeros_(self.mhamgu_expand.bias)
 
-        # ── Spatial output head (Multi-ACCDOA) ────────────────────────────
+        # ── Spatial output heads (SED logits + DOA regression) ───────────
         spat_out_dim = self.n_tracks * self.n_cls * 3
 
         if self._tss_type == 'mhamgu':
@@ -547,10 +541,8 @@ class NASModel(nn.Module):
         """
         if self.itype == 'spectral':
             return self.input_proc(x)                    # (B, 2*n_mics, T, F)
-        elif self.itype == 'gabor':
+        else:  # gabor
             return self.input_proc(x)                    # (B, C_spat, T, n_filters)
-        else:  # maxcorr
-            return self.input_proc(x).permute(0, 1, 2, 3)  # already (B, n_filters, T, n_mics)
 
     def _run_spatial_late(
         self,

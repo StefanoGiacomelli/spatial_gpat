@@ -126,7 +126,7 @@ FAMILIES: dict = {
     ],
     'DSP': [
         'SpectralProcessor', 'LearnableGaborFilterBank',
-        'GaborFrontEnd', 'MaxCorrFilterBank',
+        'GaborFrontEnd',
     ],
 }
 
@@ -143,7 +143,6 @@ _MODULE_DISPLAY: dict = {
     'FormantEnhancementModule':   'FormantEnhancer',
     'AttentiveStatisticsPooling': 'AttentiveStatisticsPooling',
     'LearnableGaborFilterBank':   'GaborFilterbank',
-    'MaxCorrFilterBank':          'MaxCorrFilterbank',
 }
 
 # Display names for family legend headers (fig2)
@@ -587,7 +586,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    csv_path = (pathlib.Path(args.csv) if args.csv
+    csv_path = (pathlib.Path(args.csv).resolve() if args.csv
                 else _latest_csv(RESULTS_DIR))
     print(f'Loading: {csv_path.relative_to(_ROOT)}')
     rows = _load_csv(csv_path)

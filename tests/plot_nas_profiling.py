@@ -3,15 +3,19 @@ tests/plot_nas_profiling.py
 ============================
 Scatter plot of NAS experiment configurations.
 
-Reads the most recent (or a specified) NAS profiling CSV from ``results/``
-and produces one SVG figure in ``figures/``:
+Reads a NAS profiling CSV from ``results/`` and produces one SVG figure in
+``figures/``.  The figure filename is derived from the CSV filename:
 
-  fig_nas_scatter.svg    GFLOPs vs forward-time scatter, marker size ∝ params
+    nas_configs_profile_{group_slug}_{timestamp}.csv
+        →  fig_nas_scatter_{group_slug}.svg
 
 Usage
 -----
+    # latest CSV (all groups)
     python tests/plot_nas_profiling.py
-    python tests/plot_nas_profiling.py --csv results/nas_configs_profile_<ts>.csv
+
+    # specific CSV
+    python tests/plot_nas_profiling.py --csv results/nas_configs_profile_foa_shallow_spec_20260405_120000.csv
 
 Author
 ------
@@ -22,6 +26,7 @@ DISIM Department — University of L'Aquila
 import argparse
 import csv
 import pathlib
+import re
 
 import matplotlib
 matplotlib.use('Agg')
@@ -67,7 +72,6 @@ CMAP_NAME     = 'nipy_spectral'
 _TOKEN_DISPLAY = {
     'spe': 'spectral',
     'gab': 'gabor',
-    'mcr': 'maxcorr',
     'cb':  'ConvBlock',
     'rn':  'ResNet',
     'fe':  'FormantEnh',
@@ -82,10 +86,30 @@ _TOKEN_DISPLAY = {
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _latest_csv() -> pathlib.Path:
-    candidates = sorted(RESULTS_DIR.glob('exp_1_nas_configs_profile_*.csv'))
+    candidates = sorted(RESULTS_DIR.glob('nas_configs_profile_*.csv'))
     if not candidates:
         raise FileNotFoundError(f'No NAS profiling CSV found in {RESULTS_DIR}')
     return candidates[-1]
+
+
+def _figure_slug(csv_path: pathlib.Path) -> str:
+    """Derive a figure-name slug from a CSV path.
+
+    ``nas_configs_profile_foa_shallow_spec_20260405_120000.csv``
+    →  ``foa_shallow_spec``
+
+    Falls back to the CSV stem if the expected pattern is not matched.
+    """
+    stem = csv_path.stem  # e.g. nas_configs_profile_foa_shallow_spec_20260405_120000
+    # Strip leading 'nas_configs_profile_' prefix and trailing timestamp
+    m = re.match(r'^nas_configs_profile_(.+?)_\d{8}_\d{6}$', stem)
+    if m:
+        return m.group(1)
+    # fallback: strip known prefix only
+    prefix = 'nas_configs_profile_'
+    if stem.startswith(prefix):
+        return stem[len(prefix):]
+    return stem
 
 
 def _load(csv_path: pathlib.Path) -> list[dict]:
@@ -128,7 +152,7 @@ def _colours(n: int) -> list:
 #  FIGURE
 # ══════════════════════════════════════════════════════════════════════════════
 
-def fig_scatter(rows: list[dict], out_path: pathlib.Path) -> None:
+def fig_scatter(rows: list[dict], out_path: pathlib.Path, slug: str) -> None:
     gflops  = np.array([r['_gflops']  for r in rows])
     t_ms    = np.array([r['_t_ms']    for r in rows])
     params  = np.array([r['_params']  for r in rows])
@@ -159,9 +183,11 @@ def fig_scatter(rows: list[dict], out_path: pathlib.Path) -> None:
     # ── Axes labels / title ───────────────────────────────────────────────────
     ax.set_xlabel('GFLOPs', fontsize=LABEL_FS)
     ax.set_ylabel('Forward time  (ms)', fontsize=LABEL_FS)
-    ax.set_title('Experiment (1) NAS Configurations — Efficiency Overview\n'
-                 '(marker size ∝ total parameters)',
-                 fontsize=TITLE_FS, pad=10)
+    ax.set_title(
+        f'NAS Configurations — Efficiency Overview  [{slug}]\n'
+        '(marker size ∝ total parameters)',
+        fontsize=TITLE_FS, pad=10,
+    )
     ax.tick_params(labelsize=TICK_FS)
 
     # ── Legend: configs (internal, 2 columns) ────────────────────────────────
@@ -227,7 +253,7 @@ def main() -> None:
                         help='Path to NAS profiling CSV (default: latest in results/)')
     args = parser.parse_args()
 
-    csv_path = pathlib.Path(args.csv) if args.csv else _latest_csv()
+    csv_path = pathlib.Path(args.csv).resolve() if args.csv else _latest_csv()
     print(f'Loading: {csv_path}')
 
     rows = _load(csv_path)
@@ -235,8 +261,11 @@ def main() -> None:
         print('[ERROR] No valid (status=OK) rows found.')
         return
 
-    print(f'Plotting {len(rows)} configurations...')
-    fig_scatter(rows, FIGURES_DIR / f'exp_1_fig_nas_scatter.{FIGURE_FORMAT}')
+    slug     = _figure_slug(csv_path)
+    out_path = FIGURES_DIR / f'fig_nas_scatter_{slug}.{FIGURE_FORMAT}'
+
+    print(f'Plotting {len(rows)} configurations  →  {out_path.name}')
+    fig_scatter(rows, out_path, slug)
 
 
 if __name__ == '__main__':

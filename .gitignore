@@ -1,5 +1,6 @@
 /data/
 /logs/
+/runs/
 
 *.venv/
 __pycache__/
