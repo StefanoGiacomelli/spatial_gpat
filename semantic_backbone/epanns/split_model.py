@@ -115,8 +115,10 @@ class SplitEPANNs(nn.Module):
 
         # ── Load pretrained weights if a checkpoint path is given ──────
         # Load unconditionally first; random-init groups are overwritten below.
+        pretrained_class_map = cfg.get('pretrained_class_map', None)
+        model_class_map      = cfg.get('model_class_map', None)
         if ckpt_path is not None and os.path.isfile(ckpt_path):
-            self._load_checkpoint(ckpt_path, n_cls)
+            self._load_checkpoint(ckpt_path, n_cls, pretrained_class_map, model_class_map)
 
         # ── Apply per-group init / freeze config ───────────────────────
         for group_key in ('early_group', 'late_group', 'head_group'):
@@ -127,21 +129,98 @@ class SplitEPANNs(nn.Module):
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _load_checkpoint(self, path: str, n_cls: int) -> None:
+    def _load_checkpoint(
+        self,
+        path: str,
+        n_cls: int,
+        pretrained_class_map: str = None,
+        model_class_map: str = None,
+    ) -> None:
         state = torch.load(path, map_location='cpu', weights_only=False)
         ckpt_cls = state.get('fc_audioset.weight')
         model_cls_shape = self.backbone.fc_audioset.weight.shape
 
         if ckpt_cls is not None and ckpt_cls.shape != model_cls_shape:
+            # Load everything except fc_audioset (shape mismatch)
             filtered = {k: v for k, v in state.items()
                         if not k.startswith('fc_audioset')}
             self.backbone.load_state_dict(filtered, strict=False)
             print(f"[SplitEPANNs] Loaded backbone (partial) from {path}")
-            print(f"  ckpt classes={ckpt_cls.shape[0]}  model classes={model_cls_shape[0]}"
-                  f"  → fc_audioset randomly initialised")
+            print(f"  ckpt classes={ckpt_cls.shape[0]}  model classes={model_cls_shape[0]}")
+
+            # Selective weight transfer for shared classes if both maps are provided
+            if (pretrained_class_map and model_class_map
+                    and os.path.isfile(pretrained_class_map)
+                    and os.path.isfile(model_class_map)):
+                n_transferred = self._transfer_fc_audioset(
+                    state, pretrained_class_map, model_class_map
+                )
+                print(
+                    f"  fc_audioset: {n_transferred} neurons transferred from pretrained, "
+                    f"{model_cls_shape[0] - n_transferred} randomly initialised"
+                )
+            else:
+                print("  fc_audioset: randomly initialised (no class maps provided)")
         else:
             self.backbone.load_state_dict(state)
             print(f"[SplitEPANNs] Loaded pretrained weights from {path}")
+
+    def _transfer_fc_audioset(
+        self,
+        ckpt_state: dict,
+        pretrained_class_map_csv: str,
+        model_class_map_csv: str,
+    ) -> int:
+        """
+        Copy fc_audioset rows from the checkpoint for shared classes.
+
+        Reads the AudioSet Standard map (mid → old_idx) and the Strong model
+        map (new_idx → mid), then copies the corresponding weight/bias rows
+        from the checkpoint into the backbone's fc_audioset layer.
+
+        Classes not found in the checkpoint are left with their Xavier init.
+
+        Args:
+            ckpt_state             : raw state_dict from ``torch.load``
+            pretrained_class_map_csv : path to ``class_labels_indices.csv``
+                                       (AudioSet Standard, 527 classes)
+            model_class_map_csv    : path to ``audioset_strong_label_map.csv``
+                                       (456 classes)
+
+        Returns:
+            Number of neurons successfully transferred from the checkpoint.
+        """
+        import csv as _csv
+
+        # AudioSet Standard: mid → index in the pretrained checkpoint
+        std_mid2idx: dict = {}
+        with open(pretrained_class_map_csv) as fh:
+            for row in _csv.DictReader(fh):
+                std_mid2idx[row['mid'].strip()] = int(row['index'])
+
+        # Strong model map: new_idx → mid
+        new_idx2mid: dict = {}
+        with open(model_class_map_csv) as fh:
+            for row in _csv.DictReader(fh):
+                new_idx2mid[int(row['index'])] = row['mid'].strip()
+
+        ckpt_w = ckpt_state.get('fc_audioset.weight')
+        ckpt_b = ckpt_state.get('fc_audioset.bias')
+        fc     = self.backbone.fc_audioset
+
+        n_transferred = 0
+        with torch.no_grad():
+            for new_idx, mid in new_idx2mid.items():
+                old_idx = std_mid2idx.get(mid)
+                if old_idx is None:
+                    continue   # Strong-only class → keep Xavier init
+                if ckpt_w is not None and old_idx < ckpt_w.shape[0]:
+                    fc.weight[new_idx].copy_(ckpt_w[old_idx])
+                if ckpt_b is not None and old_idx < ckpt_b.shape[0]:
+                    fc.bias[new_idx].copy_(ckpt_b[old_idx])
+                n_transferred += 1
+
+        return n_transferred
 
     def _apply_group_config(self, group_key: str, gcfg: dict) -> None:
         modules = self._group_modules[group_key]
@@ -181,7 +260,10 @@ class SplitEPANNs(nn.Module):
         x = x.transpose(1, 3)
 
         if self.training:
-            x = bb.spec_augmenter(x)
+            try:
+                x = bb.spec_augmenter(x)
+            except RuntimeError:
+                pass  # spectrogram too short for time/freq masking — skip augmentation
 
         x = bb.conv_block1(x, pool_size=(2, 2), pool_type='avg')
         x = F.dropout(x, p=0.2, training=self.training)

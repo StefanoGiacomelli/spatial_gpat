@@ -1,0 +1,15 @@
+experiment:
+  name: at2sed_default
+  seed: 42
+
+model:
+  n_cls: 456
+
+semantic:
+  checkpoint: semantic_backbone/epanns/checkpoint_closeto_.44.pt
+  early_group: {init: pretrained, frozen: false}
+  late_group:  {init: pretrained, frozen: false}
+  head_group:  {init: pretrained}                 # always unfrozen
+
+training:
+  inference_threshold: 0.5   # sigmoid threshold for F1/Precision/Recall/Accuracy

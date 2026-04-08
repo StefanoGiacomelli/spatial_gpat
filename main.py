@@ -120,7 +120,7 @@ DATASET_ROOTS = {
 }
 
 # Default config / output directories (may be overridden in main())
-_DEFAULT_CONFIGS_DIR = _ROOT / 'configs' / 'experiments'
+_DEFAULT_CONFIGS_DIR = _ROOT / 'configs' / 'experiments' / 'foa' / 'shallow_spec'
 _DATASET_CONFIGS_DIR = _ROOT / 'configs' / 'datasets'
 
 # These are reassigned in main() based on --config-dir / --run-dir
@@ -273,7 +273,7 @@ def _build_cfg(exp_yaml_path: Path, args) -> dict:
         'batch_size':      args.batch_size,
         'lambda_spatial':  0.9,   # weight of tPIT (spatial) in total loss
         'lambda_semantic': 0.1,   # weight of BCE (semantic) in total loss
-        'beta_sed':        0.5,   # SED/DOA split inside tPIT (DOA = 1-beta = 0.5)
+        'beta_sed':        0.6,   # SED/DOA split inside tPIT (DOA = 1-beta = 0.4)
         'angle_thresh':    20.0,
     }
 

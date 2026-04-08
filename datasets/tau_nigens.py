@@ -27,6 +27,7 @@ for Sound Event Localization and Detection," DCASE Workshop 2021.
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+import torch
 from .seld_dataset import SELDDataset
 
 
