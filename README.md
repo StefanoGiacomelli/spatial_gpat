@@ -21,6 +21,13 @@ Stefano Giacomelli — DISIM, University of L'Aquila
 12. [Training Pipeline — NAS Phase 1](#12-training-pipeline--nas-phase-1)
 13. [Dataset Management](#13-dataset-management)
 14. [Experiment Configuration](#14-experiment-configuration)
+15. [AT2SED — Overview and Motivation](#15-at2sed--overview-and-motivation)
+16. [Label Space: AudioSet-Strong 456-Class Alignment](#16-label-space-audioset-strong-456-class-alignment)
+17. [AT2SEDModel Architecture](#17-at2sedmodel-architecture)
+18. [AudioSetStrongDataModule — Dataset Pipeline](#18-audiosetstrongdatamodule--dataset-pipeline)
+19. [Loss Function and Metrics](#19-loss-function-and-metrics)
+20. [Training Pipeline — AT2SED](#20-training-pipeline--at2sed)
+21. [AT2SED Experiment Configuration](#21-at2sed-experiment-configuration)
 
 ---
 
@@ -1007,4 +1014,496 @@ runs/{config_dir_name}/
 └── metrics/
     ├── {exp_name}.json                     # per-epoch + test metrics (progressive)
     └── {exp_name}_confusion_matrix.json    # semantic head confusion matrix (test only)
+```
+
+---
+
+## Part II — AT2SED: AudioSet-Strong SED Fine-Tuning
+
+---
+
+## 15. AT2SED — Overview and Motivation
+
+### Task
+
+AT2SED (AudioSet-Tagging to Sound Event Detection) is a dedicated fine-tuning pipeline that adapts the pretrained E-PANNs (Cnn14Pruned) backbone for **multi-label frame-level SED on AudioSet-Strong**. The spatial pipeline, CrossStitch bridges, track permutation and DOA estimation from Part I are all omitted — only the semantic backbone is used.
+
+The primary research goal is to measure how much **classification quality** degrades as a function of **input window duration**, as a prerequisite for pseudo-real-time inference at short latencies.
+
+### AudioSet-Strong vs AudioSet Standard
+
+The pretrained E-PANNs model was trained on AudioSet Standard, which provides **clip-level** annotations (one label set per 10-second clip, no temporal resolution). AudioSet-Strong enhances a subset of those clips with **temporally precise** annotations: each event is labelled with a `start_time_seconds` and `end_time_seconds` within the clip, enabling proper frame-level SED evaluation.
+
+### Relationship to GP-AT SELD (Part I)
+
+| Aspect | GP-AT SELD (Part I) | AT2SED (Part II) |
+|--------|---------------------|------------------|
+| Backbone | SplitEPANNs (shared) | SplitEPANNs (shared) |
+| Spatial branch | Yes (FOA/MIC) | No |
+| Output | SED + DOA per track | Multi-label logits only |
+| Target format | Multi-ACCDOA `(T, N, C, 3)` | Multi-hot `(C,)` |
+| Loss | tPIT + semantic BCE | BCEWithLogitsLoss |
+| Datasets | STARSS23, TAU-NIGENS2021 | AudioSet-Strong |
+| Entry point | `main.py` | `main_sed_only.py` |
+
+SplitEPANNs is instantiated identically in both pipelines; the per-group init/freeze configuration (YAML) applies to both without conflict. The two training workflows are fully independent.
+
+---
+
+## 16. Label Space: AudioSet-Strong 456-Class Alignment
+
+### 16a. Class Set Comparison
+
+AudioSet-Strong covers **456 MID classes**, while the pretrained E-PANNs checkpoint was trained on AudioSet Standard's **527 classes**. The two sets partially overlap:
+
+| Category | Count |
+|----------|-------|
+| AudioSet Standard (pretrained backbone) | 527 |
+| AudioSet-Strong | 456 |
+| Shared (∩) | **382** (83.8 % of Strong) |
+| Strong-only (not in pretrained) | 74 |
+| Standard-only (not in Strong, unused) | 145 |
+
+Naively mapping AudioSet-Strong labels onto the 527-class Standard space would silently discard ~22 % of all training events (the 74 Strong-only classes). The 456-class label map eliminates this loss.
+
+### 16b. Label Map — `configs/datasets/audioset_strong_label_map.csv`
+
+A dedicated CSV (456 rows, 5 columns) assigns a contiguous 0-based index to every AudioSet-Strong class:
+
+```
+index, mid, display_name, as_std_mid, as_std_display_name
+0,     /m/09x0r, Speech,             /m/09x0r, Speech
+1,     /m/05zppz, Male speech ...,   /m/05zppz, Male speech ...
+...
+381,   /m/07hvw1, ...,               /m/07hvw1, ...      ← last shared class
+382,   /t/dd00144, Alert,            None, Strong-only   ← first Strong-only
+...
+455,   /m/01j423, Yawn,              None, Strong-only
+```
+
+**Row ordering:**
+
+- **Indices 0–381**: 382 shared classes, sorted by their original AudioSet Standard index.
+- **Indices 382–455**: 74 Strong-only classes, sorted alphabetically by `display_name`.
+
+**Motivation for the ordering:** sorting shared classes by their Standard index preserves the exact semantic ordering of the pretrained `fc_audioset` rows, enabling a direct row-for-row weight copy (see §16c).
+
+Generated once by `experiments_at2sed/build_strong_label_map.py` from:
+
+- `mid_to_display_name.tsv` — AudioSet-Strong class names
+- `class_labels_indices.csv` — AudioSet Standard 527-class index map
+
+### 16c. Selective Weight Transfer — `SplitEPANNs._transfer_fc_audioset`
+
+The pretrained checkpoint has `fc_audioset.weight: (527, 2048)`, one row per Standard class. When `n_cls = 456`, a shape mismatch is detected in `_load_checkpoint`. Rather than discarding the head entirely, a selective copy transfers 382 pretrained rows:
+
+```
+ckpt fc_audioset : (527, 2048)   pretrained, one row per AS-Standard class
+new  fc_audioset : (456, 2048)   model to initialise
+
+For each new_idx in [0, 455]:
+    mid     = model_class_map[new_idx]
+    old_idx = pretrained_class_map.get(mid)          None if Strong-only
+
+    if old_idx is not None:
+        fc_audioset.weight[new_idx] ← ckpt.weight[old_idx]
+        fc_audioset.bias[new_idx]   ← ckpt.bias[old_idx]
+    else:
+        retain Xavier uniform initialisation            Strong-only class
+
+Result: 382 rows transferred from pretrained, 74 Xavier-initialised
+```
+
+**Backward compatibility:** the NAS pipeline always calls `SplitEPANNs` with `n_cls = 527`; checkpoint shapes match → the existing `load_state_dict` code path runs unchanged. The new transfer logic is only reached inside the `shape_mismatch` branch.
+
+### 16d. One-Shot Build Script
+
+```bash
+.venv/bin/python experiments_at2sed/build_strong_label_map.py
+```
+
+Reads the two metadata files and writes `configs/datasets/audioset_strong_label_map.csv`. Run once; output is committed to the repository.
+
+---
+
+## 17. AT2SEDModel Architecture
+
+### 17a. Data Flow
+
+```
+x : (B, T_samples) @ 32 kHz
+    │
+    SplitEPANNs.forward_early(x)
+    │   STFT (N_fft=1024, hop=320) → Log-Mel (64 bins)
+    │   → BN0 → [SpecAugment, training only] → ConvBlock1–3
+    ↓
+h_early : (B, 256, T/8, F_mel/8)
+    │
+    SplitEPANNs.forward_late(h_early)
+    │   ConvBlock4–6
+    ↓
+h_late : (B, 1024, T/32, F_mel/32)
+    │
+    mean(dim=F) → (B, 1024, T/32)
+    max(dim=T)  +  mean(dim=T) → (B, 1024)    element-wise sum (Cnn14Pruned style)
+    │
+    Dropout(0.5)
+    FC1:         1024 → 2048, ReLU
+    Dropout(0.5)
+    FC_audioset: 2048 → 456
+    ↓
+logits : (B, 456)   raw logits — BCEWithLogitsLoss at train, sigmoid at inference
+```
+
+### 17b. Per-Group Configuration
+
+Identical to the NAS pipeline (§5b). All three parameter groups are configurable via the `semantic` YAML section:
+
+| Group | Layers | Default (`at2sed_default.yaml`) |
+|-------|--------|---------------------------------|
+| `early_group` | LogMel, BN0, ConvBlock1–3 | `init: pretrained, frozen: false` |
+| `late_group` | ConvBlock4–6 | `init: pretrained, frozen: false` |
+| `head_group` | FC1, FC_audioset | `init: pretrained` — always unfrozen |
+
+`head_group` has no `frozen` key: the classification stage is always trainable by design. Setting `init: pretrained` triggers the selective weight transfer (§16c); `init: random` applies Xavier uniform to the entire head, overriding any transfer.
+
+### 17c. SpecAugmentation Guard for Short Windows
+
+`forward_early` calls `bb.spec_augmenter(x)` during training. The torchlibrosa `SpecAugmentation` time-masking requires the mel-spectrogram time dimension to exceed the masking distance parameter. For windows shorter than ~1 s the tensor is too short and a `RuntimeError` is raised. The guard skips augmentation in that case:
+
+```python
+if self.training:
+    try:
+        x = bb.spec_augmenter(x)
+    except RuntimeError:
+        pass   # spectrogram too short for time/freq masking — skip augmentation
+```
+
+Training proceeds normally; augmentation is simply absent for short-window batches.
+
+---
+
+## 18. AudioSetStrongDataModule — Dataset Pipeline
+
+### 18a. Annotation Format
+
+**Train TSV** (4 columns):
+
+```
+segment_id            start_time_seconds  end_time_seconds  positive_labels
+b0RFKhbpFJA_30000     0.0                 0.5               /m/09x0r,/m/07q4ntr
+```
+
+- `segment_id` = `{ytid}_{start_ms}` (start offset of the 10-second clip in the YouTube video)
+- `positive_labels` = comma-separated MID list of all events active in `[start_s, end_s]`
+
+**Eval TSV** (5 columns): adds `audio_filename` (not used by the dataloader; the ytid is extracted from `segment_id`).
+
+### 18b. Clip ID → Audio File Mapping
+
+AudioSet-Strong clip IDs embed the clip start offset (`{ytid}_{start_ms}`), but audio files are named `{ytid}.wav`. The dataset strips the `_\d+` suffix before looking up the file:
+
+```
+clip_id :   b0RFKhbpFJA_30000
+audio   :   b0RFKhbpFJA.wav      search in audio_root_train, audio_root_unbalanced
+```
+
+File lookup searches across two directories:
+
+| Directory | Contents |
+|-----------|----------|
+| `audio_root_train` (`balanced_train_segments/`) | ~20 k balanced-set clips |
+| `audio_root_unbalanced` (`unbalanced_strong/`) | ~95,930 unbalanced clips |
+
+### 18c. Unbalanced Audio Extraction
+
+The unbalanced segments are distributed across 41 multi-part zip archives (`unbalanced_train_segments_part00.zip`, `.z01`, `.z02`, …). Python's `zipfile` module does not support split archives; extraction uses `7z`:
+
+```bash
+.venv/bin/python extract_unbalanced_strong.py   # or with --dry-run for inspection
+```
+
+```
+Source : unbalanced_train_segments_part0*.zip  (41 archives)
+Dest   : unbalanced_strong/
+Files  : ~95,930 clips  (Y{ytid}.wav → {ytid}.wav after rename)
+```
+
+The script is resumable (skips already-extracted files) and supports `--parts N` to extract from only the first N archives.
+
+### 18d. Label Binarisation
+
+For each `(clip, window)` item, events with `[start_s, end_s)` overlapping the window are collected. Their MIDs are mapped to indices via the 456-class label map, producing a float32 multi-hot target:
+
+```
+y[c] = 1   if ∃ event with MID mapped to class c active in the window
+y[c] = 0   otherwise
+```
+
+An overlap threshold of 0.0 s (any overlap) is used by default (`overlap_threshold: 0.0` in `AudioSetStrong.yaml`).
+
+### 18e. Windowing
+
+```
+window_samples = round(window_s × 32000)
+hop_samples    = round(hop_s × 32000)
+
+items = [(clip_i, 0), (clip_i, hop_samples), (clip_i, 2·hop_samples), …]
+```
+
+Each item returns:
+
+- `x : (T_samples,)` float32 @ 32 kHz — zero-padded if the clip is shorter than `window_s`
+- `y : (456,)` float32 multi-hot label tensor
+
+### 18f. pos_weight (Class-Imbalance Correction)
+
+```
+N_pos[c] = number of windows in training split with y[c] = 1
+N_neg[c] = total windows − N_pos[c]
+
+pos_weight[c] = clip(N_neg[c] / N_pos[c],  max = pos_weight_max)
+pos_weight_max = 20.0   (default, configurable in AudioSetStrong.yaml)
+```
+
+Computed by `AudioSetStrongDataModule` after `setup('fit')` and injected into the loss via `model.set_pos_weight(pw)`. Rare classes receive proportionally larger gradient contributions during training.
+
+### 18g. Dataset Split
+
+| Split | Source | Size |
+|-------|--------|------|
+| Train | `strong_tsv_train` (80 %) | 80 % of TSV rows with a found audio file |
+| Val | `strong_tsv_train` (20 %) | held-out; `val_fraction=0.2`, `val_seed=42` |
+| Test | `strong_tsv_test` | `eval_segments` (fixed, official) |
+
+---
+
+## 19. Loss Function and Metrics
+
+### 19a. SEDMultiLabelLoss
+
+Binary cross-entropy with optional per-class positive weighting:
+
+```
+L = BCEWithLogitsLoss(logits, targets, pos_weight)    reduction = 'mean'
+
+  = − (1 / B·C) Σ_{b,c} [ pw_c · y_{bc} · log σ(z_{bc})
+                          + (1 − y_{bc}) · log(1 − σ(z_{bc})) ]
+```
+
+`pos_weight` is a registered buffer (follows the module to the correct device automatically). When `None`, all classes are weighted equally.
+
+### 19b. SEDMultiLabelMetrics
+
+Accumulated with `torchmetrics`. Metrics are split by whether they require a threshold:
+
+| Metric | Type | Torchmetrics class | Notes |
+|--------|------|--------------------|-------|
+| `map_macro` | threshold-free | `MultilabelAveragePrecision` | **Primary metric** — checkpoint monitor |
+| `auroc_macro` | threshold-free | `MultilabelAUROC` | Area under ROC curve |
+| `f1_macro` | σ > thresh | `MultilabelF1Score(average='macro')` | |
+| `f1_micro` | σ > thresh | `MultilabelF1Score(average='micro')` | |
+| `precision_macro` | σ > thresh | `MultilabelPrecision(average='macro')` | |
+| `recall_macro` | σ > thresh | `MultilabelRecall(average='macro')` | |
+| `accuracy` | σ > thresh | `MultilabelAccuracy(average='micro')` | |
+| `confusion_matrix` | σ > thresh | `MultilabelConfusionMatrix` | test only, saved as `.npy` |
+
+Default threshold: 0.5 (configurable via `training.inference_threshold`).
+
+mAP is threshold-free and is the standard AudioSet evaluation metric; it is robust to class imbalance and does not require calibrating a decision threshold, making it the primary criterion for checkpointing.
+
+### 19c. Confusion Matrix
+
+At test time, the `(456, 2, 2)` int64 confusion matrix is saved to `{run_dir}/confusion_matrix.npy`. It is not logged to TensorBoard (too large). Load with:
+
+```python
+import numpy as np
+cm = np.load('runs/at2sed/at2sed_default/confusion_matrix.npy')
+# cm[c] = [[TN, FP], [FN, TP]] for class c
+```
+
+---
+
+## 20. Training Pipeline — AT2SED
+
+### 20a. Optimizer
+
+```
+Adam(params_with_requires_grad, lr = lr_0)
+```
+
+Only parameters with `requires_grad = True` are passed to the optimizer, respecting the per-group freeze configuration.
+
+### 20b. Learning Rate Scheduler (CosineAnnealingLR)
+
+```
+lr(t) = lr_min + 0.5 · (lr_0 − lr_min) · (1 + cos(π · t / T_max))
+
+T_max  = epochs   (total training epochs for the run)
+lr_0   = 1e-3     (CLI --lr; configurable per run)
+lr_min = 1e-5     (training.lr_min in YAML; default 1e-5)
+```
+
+The LR decays smoothly from `1e-3` to `1e-5` over the full training budget. The scheduler is updated once per epoch (`interval = 'epoch'`).
+
+### 20c. Gradient Management
+
+Identical to the NAS pipeline (§12c):
+
+**Gradient clipping** (L2 norm, per step):
+
+```
+‖g‖₂ ← min(‖g‖₂, 1.0)
+```
+
+**Gradient accumulation** (to target an effective batch size of 16):
+
+```
+accum_steps    = max(1, ⌊16 / batch_size⌋)
+effective_batch = batch_size × accum_steps ≈ 16
+```
+
+Example: `batch_size = 32 → accum_steps = 1 → effective_batch = 32` (no accumulation).
+
+### 20d. Checkpointing
+
+```
+filename   : {epoch:02d}_{val_map_macro:.4f}
+monitor    : val_map_macro   (higher is better, mode = 'max')
+save_top_k : 1               (only best checkpoint retained)
+save_last  : True            → last.ckpt (deleted on successful completion)
+```
+
+### 20e. Resume Flow (Interrupted Experiment)
+
+```
+Priority: last.ckpt  →  any *.ckpt (alphabetical, last)  →  fresh start
+```
+
+`state.json` records:
+
+```json
+{
+  "status":       "running | completed | pending",
+  "started_at":   "2025-01-01T12:00:00",
+  "best_ckpt":    "runs/at2sed/at2sed_default/checkpoints/05_0.3142.ckpt",
+  "best_val_map": 0.3142,
+  "completed_at": "2025-01-01T18:30:00"
+}
+```
+
+Updated atomically (write `.tmp` → rename). The per-epoch metrics JSON is pre-loaded from `metrics.json` when resuming, ensuring progressive accumulation continues correctly.
+
+### 20f. Smoke Test
+
+```bash
+# 5 batches per epoch, 1 epoch — status remains 'running' → auto-resume on next invocation
+python main_sed_only.py --epochs 1 --limit-batches 5
+```
+
+### 20g. Logging
+
+**TensorBoard** (port 6007, launched automatically):
+
+| Key | Frequency | Description |
+|-----|-----------|-------------|
+| `train/loss` | step + epoch | BCE loss |
+| `val/loss` | epoch | Validation BCE loss |
+| `val/map_macro` | epoch | mAP macro (primary checkpoint metric) |
+| `val/auroc_macro` | epoch | AUROC macro |
+| `val/f1_macro`, `val/f1_micro` | epoch | F1 macro / micro |
+| `val/precision_macro`, `val/recall_macro` | epoch | Precision / Recall macro |
+| `val/accuracy` | epoch | Accuracy micro |
+| `test/{metric}` | once (post-test) | Same metric set as validation |
+| `lr/cosine` | epoch | Current learning rate |
+
+**JSON metrics log** (per-run, progressive):
+
+```json
+[
+  {"epoch": 0,    "val/map_macro": 0.12, "val/auroc_macro": 0.71, ...},
+  {"epoch": 1,    "val/map_macro": 0.18, ...},
+  ...
+  {"epoch": "test", "test/map_macro": 0.31, "test/auroc_macro": 0.84, ...}
+]
+```
+
+---
+
+## 21. AT2SED Experiment Configuration
+
+### 21a. YAML Hierarchy
+
+```
+configs/
+├── datasets/
+│   ├── AudioSetStrong.yaml              # data paths, pos_weight_max, augmentation
+│   └── audioset_strong_label_map.csv   # 456-class label map (5 columns)
+└── experiments_at2sed/
+    └── at2sed_default.yaml             # model.n_cls, semantic groups, inference_threshold
+```
+
+### 21b. Config Merge Priority
+
+```
+CLI args  >  experiments_at2sed/{exp}.yaml  >  AudioSetStrong.yaml defaults
+```
+
+Sections merged: `data`, `augmentation`, `training`, `semantic`. Keys from the experiment YAML override matching keys from the dataset YAML. CLI arguments (`--lr`, `--epochs`, `--batch-size`, `--window-s`, `--hop-s`, `--num-workers`) override both YAML files.
+
+### 21c. Key Configuration Parameters
+
+| Parameter | Default value | Source |
+|-----------|---------------|--------|
+| `model.n_cls` | 456 | experiment YAML |
+| `semantic.checkpoint` | `checkpoint_closeto_.44.pt` | experiment YAML |
+| `semantic.early_group` | `{init: pretrained, frozen: false}` | experiment YAML |
+| `semantic.late_group` | `{init: pretrained, frozen: false}` | experiment YAML |
+| `semantic.head_group` | `{init: pretrained}` | experiment YAML |
+| `training.inference_threshold` | 0.5 | experiment YAML |
+| `training.lr_min` | 1e-5 | `configure_optimizers` default |
+| `training.pos_weight_max` | 20.0 | AudioSetStrong.yaml |
+| `data.val_fraction` | 0.2 | AudioSetStrong.yaml |
+| `data.val_seed` | 42 | AudioSetStrong.yaml |
+| `--window-s` | 0.5 | CLI default |
+| `--hop-s` | 0.5 | CLI default |
+| `--lr` | 1e-3 | CLI default |
+| `--epochs` | 30 | CLI default |
+| `--batch-size` | 32 | CLI default |
+
+### 21d. Training Invocation
+
+```bash
+# Default run (window=0.5s, hop=0.5s, 30 epochs, lr=1e-3→1e-5)
+python main_sed_only.py --exp at2sed_default --epochs 30
+
+# Longer window sweep
+python main_sed_only.py --window-s 2.0 --hop-s 2.0 --epochs 30
+
+# Lower LR, more epochs
+python main_sed_only.py --lr 5e-4 --epochs 50
+
+# Smoke test (2 batches, 1 epoch — status remains 'running')
+python main_sed_only.py --epochs 1 --limit-batches 2
+
+# Print experiment status
+python main_sed_only.py --list
+
+# Force re-run of a completed experiment
+python main_sed_only.py --exp at2sed_default --force
+```
+
+### 21e. Output Directory Layout
+
+```text
+runs/at2sed/{exp_name}/
+├── state.json                                  # pending | running | completed
+├── metrics.json                                # per-epoch + test metrics (progressive)
+├── confusion_matrix.npy                        # (456, 2, 2) int64, test only
+├── checkpoints/
+│   ├── {epoch:02d}_{val_map_macro:.4f}.ckpt   # best checkpoint (retained)
+│   └── last.ckpt                              # latest epoch (deleted on completion)
+└── tb_logs/
+    └── version_0/
+        └── events.out.tfevents.*              # TensorBoard event files
 ```
