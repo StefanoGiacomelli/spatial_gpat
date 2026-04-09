@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-main_sed_only.py — SED-only Fine-tuning on AudioSet-Strong
+main_at2sed.py — SED Fine-tuning on AudioSet-Strong
 ===========================================================
 Trains ``AT2SEDLightningModule`` on AudioSet-Strong balanced+strong clips.
 Designed to measure classification quality as a function of input window

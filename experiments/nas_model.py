@@ -133,28 +133,34 @@ def _channel_schedule(n_layers: int, out_ch: int) -> List[int]:
     """
     Return per-layer output channel counts for spatial_early bottleneck stacking.
 
-    Policy:
+    Policy — progressive halving (powers of 2):
       n=1 → [out_ch]
-      n=2 → [2*out_ch, out_ch]
-      n≥3 → [3*out_ch, 2*out_ch, out_ch, ..., out_ch]  (last n-2 layers at out_ch)
-    The final entry is always out_ch, so bridge_early always receives out_ch channels.
+      n=2 → [2*out_ch,  out_ch]
+      n=3 → [4*out_ch,  2*out_ch,  out_ch]
+      n=4 → [8*out_ch,  4*out_ch,  2*out_ch,  out_ch]
+      ...
+      n=k → [2^(k-1)*out_ch, ..., 2*out_ch, out_ch]
+
+    Each additional layer doubles the peak capacity of the first layer, so the
+    schedule grows meaningfully with depth (no plateau).  The final entry is
+    always out_ch, guaranteeing that bridge_early always receives out_ch channels
+    regardless of depth.
     """
-    if n_layers == 1:
-        return [out_ch]
-    elif n_layers == 2:
-        return [2 * out_ch, out_ch]
-    else:
-        return [3 * out_ch, 2 * out_ch] + [out_ch] * (n_layers - 2)
+    return [out_ch * (2 ** (n_layers - 1 - i)) for i in range(n_layers)]
 
 
 def _build_spatial_early(cfg: dict, in_channels: int) -> Tuple[nn.ModuleList, int]:
     """
     Build a bottleneck stack of spatial early-feature modules.
 
-    Channel schedule (n=layers, ref=out_channels):
+    Channel schedule — progressive halving (ref = out_channels):
       n=1: ref
       n=2: 2×ref → ref
-      n≥3: 3×ref → 2×ref → ref … ref
+      n=3: 4×ref → 2×ref → ref
+      n=4: 8×ref → 4×ref → 2×ref → ref
+
+    The final layer always outputs ref channels so bridge_early sees a
+    fixed-width tensor regardless of stack depth.
 
     Returns:
         modules     : nn.ModuleList of n_layers modules

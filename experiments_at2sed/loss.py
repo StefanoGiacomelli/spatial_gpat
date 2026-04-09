@@ -43,19 +43,21 @@ Stefano Giacomelli, Ph.D. candidate
 DISIM Department — University of L'Aquila
 """
 
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import torch
 import torch.nn as nn
 import numpy as np
 from torchmetrics.classification import (
     MultilabelAccuracy,
-    MultilabelAUROC,
-    MultilabelAveragePrecision,
     MultilabelConfusionMatrix,
     MultilabelF1Score,
     MultilabelPrecision,
     MultilabelRecall,
+)
+from torchmetrics.functional.classification import (
+    multilabel_average_precision,
+    multilabel_auroc,
 )
 
 
@@ -165,25 +167,33 @@ class SEDMultiLabelMetrics(nn.Module):
 
     def __init__(self, n_cls: int, threshold: float = 0.5):
         super().__init__()
+        self.n_cls    = n_cls
         kw_thr = dict(num_labels=n_cls, threshold=threshold)
-        kw_raw = dict(num_labels=n_cls)
 
-        # Threshold-free metrics (operate on probabilities)
-        self.map_macro        = MultilabelAveragePrecision(average='macro',  **kw_raw)
-        self.auroc_macro      = MultilabelAUROC(average='macro',             **kw_raw)
+        # ── Threshold-free metrics (mAP, AUROC) ──────────────────────────────
+        # torchmetrics stateful classes for these metrics use _bincount() on MPS
+        # which creates an intermediate matrix of shape (B×C) × (4×C×T) —
+        # several GB even for small batches → segfault.  Instead we accumulate
+        # probs/targets as float16 CPU lists and call the torchmetrics functional
+        # API (stateless, no MPS) at compute() time.
+        # Memory cost: N_val × C × float16 = 412k × 456 × 2B ≈ 376 MB on CPU.
+        self._map_probs:   List[torch.Tensor] = []
+        self._map_targets: List[torch.Tensor] = []
 
-        # Threshold-dependent metrics
-        self.f1_macro         = MultilabelF1Score(average='macro',           **kw_thr)
-        self.f1_micro         = MultilabelF1Score(average='micro',           **kw_thr)
-        self.precision_macro  = MultilabelPrecision(average='macro',         **kw_thr)
-        self.recall_macro     = MultilabelRecall(average='macro',            **kw_thr)
-        self.accuracy         = MultilabelAccuracy(average='micro',          **kw_thr)
-        self.confusion_matrix = MultilabelConfusionMatrix(                   **kw_thr)
+        # ── Threshold-dependent metrics — torchmetrics stateful (safe on MPS) ─
+        # These accumulate only TP/FP/FN counts (int), not full prob vectors.
+        self.f1_macro         = MultilabelF1Score(average='macro',  **kw_thr)
+        self.f1_micro         = MultilabelF1Score(average='micro',  **kw_thr)
+        self.precision_macro  = MultilabelPrecision(average='macro', **kw_thr)
+        self.recall_macro     = MultilabelRecall(average='macro',    **kw_thr)
+        self.accuracy         = MultilabelAccuracy(average='micro',  **kw_thr)
+        self.confusion_matrix = MultilabelConfusionMatrix(           **kw_thr)
 
     def reset(self) -> None:
         """Reset all internal accumulators."""
+        self._map_probs.clear()
+        self._map_targets.clear()
         for m in (
-            self.map_macro, self.auroc_macro,
             self.f1_macro, self.f1_micro,
             self.precision_macro, self.recall_macro,
             self.accuracy, self.confusion_matrix,
@@ -203,17 +213,20 @@ class SEDMultiLabelMetrics(nn.Module):
             logits  : ``(B, C)`` raw (pre-sigmoid) model outputs.
             targets : ``(B, C)`` float32 multi-hot labels ∈ {0, 1}.
         """
-        probs   = torch.sigmoid(logits)
-        targets = targets.long()    # torchmetrics expects integer targets
+        probs        = torch.sigmoid(logits)
+        targets_long = targets.long()
 
-        self.map_macro.update(probs, targets)
-        self.auroc_macro.update(probs, targets)
-        self.f1_macro.update(probs, targets)
-        self.f1_micro.update(probs, targets)
-        self.precision_macro.update(probs, targets)
-        self.recall_macro.update(probs, targets)
-        self.accuracy.update(probs, targets)
-        self.confusion_matrix.update(probs, targets)
+        # mAP / AUROC: store on CPU as float16 to avoid MPS _bincount issue
+        self._map_probs.append(probs.detach().cpu().half())
+        self._map_targets.append(targets_long.detach().cpu())
+
+        # threshold-dependent: torchmetrics stateful (counts only, MPS-safe)
+        self.f1_macro.update(probs, targets_long)
+        self.f1_micro.update(probs, targets_long)
+        self.precision_macro.update(probs, targets_long)
+        self.recall_macro.update(probs, targets_long)
+        self.accuracy.update(probs, targets_long)
+        self.confusion_matrix.update(probs, targets_long)
 
     def compute(self, include_cm: bool = False) -> Dict[str, object]:
         """
@@ -228,9 +241,18 @@ class SEDMultiLabelMetrics(nn.Module):
             ``f1_micro``, ``precision_macro``, ``recall_macro``, ``accuracy``.
             Optionally ``confusion_matrix`` → ``(n_cls, 2, 2)`` int64 ndarray.
         """
+        # mAP / AUROC: functional API on CPU tensors (exact, no MPS)
+        all_probs   = torch.cat(self._map_probs,   dim=0).float()   # (N, C) CPU
+        all_targets = torch.cat(self._map_targets, dim=0)           # (N, C) CPU int64
+
+        map_val  = float(multilabel_average_precision(
+            all_probs, all_targets, num_labels=self.n_cls, average='macro'))
+        auroc_val = float(multilabel_auroc(
+            all_probs, all_targets, num_labels=self.n_cls, average='macro'))
+
         results: Dict[str, object] = {
-            'map_macro':       float(self.map_macro.compute()),
-            'auroc_macro':     float(self.auroc_macro.compute()),
+            'map_macro':       map_val,
+            'auroc_macro':     auroc_val,
             'f1_macro':        float(self.f1_macro.compute()),
             'f1_micro':        float(self.f1_micro.compute()),
             'precision_macro': float(self.precision_macro.compute()),
