@@ -102,10 +102,10 @@ VAL_FRACTION     = 0.2    # STARSS23-only (matches test_datasets.py:145)
 EFFECTIVE_BATCH  = 16     # target effective batch size for gradient accumulation
 
 # Default CLI values
-_DEFAULT_EPOCHS      = 20
+_DEFAULT_EPOCHS      = 100
 _DEFAULT_BATCH_SIZE  = 4
 _DEFAULT_LR          = 5e-4
-_DEFAULT_PATIENCE    = 0   # 0 = early stopping disabled; >0 = patience in epochs
+_DEFAULT_PATIENCE    = 20   # 0 = early stopping disabled; >0 = patience in epochs
 _DEFAULT_NUM_WORKERS = 4
 # Full-clip mode by default (window_s=0 → None → variable-length clips with
 # padding collate_fn).  Use --window-s 10 --hop-s 5 to switch to windowed mode

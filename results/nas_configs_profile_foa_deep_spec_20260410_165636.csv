@@ -1,0 +1,9 @@
+config_group,config_name,input_type,spatial_early,early_layers,spatial_late,late_layers,smoother,smooth_layers,total_params,trainable_params,memory_mb,gflops,t_ms,out_act_shape,out_doa_shape,out_semantic_shape,status
+foa_deep_spec,exp_e1_l1_s2,spectral,resnet_block,1,track_transformer,1,bigru,2,29534380,28450924,112.70,60.925,319.4,"(1, 3001, 2, 13)","(1, 3001, 2, 13, 3)","(1, 93, 13)",OK
+foa_deep_spec,exp_e1_l2_s1,spectral,resnet_block,1,track_transformer,2,bigru,1,29141420,28057964,111.21,59.743,279.1,"(1, 3001, 2, 13)","(1, 3001, 2, 13, 3)","(1, 93, 13)",OK
+foa_deep_spec,exp_e1_l2_s2,spectral,resnet_block,1,track_transformer,2,bigru,2,29930924,28847468,114.22,61.521,335.0,"(1, 3001, 2, 13)","(1, 3001, 2, 13, 3)","(1, 93, 13)",OK
+foa_deep_spec,exp_e2_l1_s1,spectral,resnet_block,2,track_transformer,1,bigru,1,28999084,27915628,110.67,200.105,571.3,"(1, 3001, 2, 13)","(1, 3001, 2, 13, 3)","(1, 93, 13)",OK
+foa_deep_spec,exp_e2_l2_s1,spectral,resnet_block,2,track_transformer,2,bigru,1,29395628,28312172,112.18,200.700,581.7,"(1, 3001, 2, 13)","(1, 3001, 2, 13, 3)","(1, 93, 13)",OK
+foa_deep_spec,exp_e3_l1_s1,spectral,resnet_block,3,track_transformer,1,bigru,1,29999020,28915564,114.49,755.819,4006.1,"(1, 3001, 2, 13)","(1, 3001, 2, 13, 3)","(1, 93, 13)",OK
+foa_deep_spec,exp_e3_l2_s1,spectral,resnet_block,3,track_transformer,2,bigru,1,30395564,29312108,116.01,756.414,3782.0,"(1, 3001, 2, 13)","(1, 3001, 2, 13, 3)","(1, 93, 13)",OK
+foa_deep_spec,exp_e3_l2_s2,spectral,resnet_block,3,track_transformer,2,bigru,2,31185068,30101612,119.02,758.191,3434.4,"(1, 3001, 2, 13)","(1, 3001, 2, 13, 3)","(1, 93, 13)",OK

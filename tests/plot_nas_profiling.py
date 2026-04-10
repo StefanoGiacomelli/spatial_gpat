@@ -262,7 +262,7 @@ def main() -> None:
         return
 
     slug     = _figure_slug(csv_path)
-    out_path = FIGURES_DIR / f'fig_nas_scatter_{slug}.{FIGURE_FORMAT}'
+    out_path = FIGURES_DIR / f'nas_scatter_{slug}.{FIGURE_FORMAT}'
 
     print(f'Plotting {len(rows)} configurations  →  {out_path.name}')
     fig_scatter(rows, out_path, slug)

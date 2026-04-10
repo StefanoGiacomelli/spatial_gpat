@@ -294,7 +294,7 @@ def build_figure(csv_dir: Path, out_dir: Path) -> Path:
 
     # ── Save ──────────────────────────────────────────────────────────────────
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f'fig_class_balance.{FIGURE_FORMAT}'
+    out_path = out_dir / f'seld_class_balance.{FIGURE_FORMAT}'
     fig.savefig(out_path, dpi=FIGURE_DPI, bbox_inches='tight',
                 facecolor='white')
     plt.close(fig)

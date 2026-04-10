@@ -11,16 +11,28 @@ For every config in a target directory (default: ``configs/experiments/**``):
   5. Count total / trainable parameters
   6. Estimate GFLOPs via ``torchinfo``
 
-Results are saved to ``results/nas_configs_profile_{group_slug}_{timestamp}.csv``,
-where ``group_slug`` is derived from the config directory path relative to
-``configs/experiments/`` (e.g. ``foa_shallow_spec``).
+Metadata (input type, module types, n_layers per stage) is read directly
+from the loaded YAML — not inferred from the filename — so it works for
+both shallow (``exp_spe_rn_tt_bg``) and deep (``exp_e2_l1_s1``) naming schemes.
+
+Results are saved to ``results/nas_configs_profile_{slug}_{timestamp}.csv``.
+The timestamp guarantees no previous CSV is ever overwritten.
 
 Usage::
 
-    # all configs under configs/experiments/ (recursive)
+    # default: all shallow configs under configs/experiments/ (recursive)
     python tests/test_nas_configs.py
 
-    # only a specific sub-group
+    # deep configs only
+    python tests/test_nas_configs.py --configs-dir configs/experiments_deep/foa/deep_spec
+
+    # all experiments_deep groups
+    python tests/test_nas_configs.py --configs-dir configs/experiments_deep
+
+    # shallow + deep in one run (two separate CSVs, one per root)
+    python tests/test_nas_configs.py --all
+
+    # single specific sub-group
     python tests/test_nas_configs.py --configs-dir configs/experiments/foa/shallow_spec
 
 Tune DEVICE / BATCH_SIZE / DURATION_S at the top of this file.
@@ -64,20 +76,20 @@ from experiments.nas_model import NASModel  # noqa: E402  (after sys.path setup)
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _group_slug(configs_dir: Path) -> str:
-    """Derive a short identifier from the config directory.
+    """Derive a readable identifier from the config directory path.
 
-    Computes the path relative to ``configs/experiments/``, replaces ``/`` with
-    ``_``, and falls back to the directory name if the path is not under the
-    expected root.
+    Computes the path relative to ``configs/experiments/``, replaces ``/``
+    with ``_``, and falls back to the directory name if the path is not
+    under that root.
 
     Examples
     --------
     ``configs/experiments/foa/shallow_spec``  →  ``foa_shallow_spec``
-    ``configs/experiments/foa``               →  ``foa``
+    ``configs/experiments/foa/deep_spec``     →  ``foa_deep_spec``
     ``configs/experiments``                   →  ``all``
     """
     try:
-        rel = configs_dir.resolve().relative_to(CONFIGS_ROOT.resolve())
+        rel  = configs_dir.resolve().relative_to(CONFIGS_ROOT.resolve())
         slug = str(rel).replace('/', '_').replace('\\', '_')
         return slug if slug else 'all'
     except ValueError:
@@ -92,7 +104,7 @@ def _count_params(model: torch.nn.Module):
 
 def _memory_mb(model: torch.nn.Module) -> float:
     """Rough parameter memory footprint in MB (float32 assumed)."""
-    total = sum(p.numel() * p.element_size() for p in model.parameters())
+    total  = sum(p.numel() * p.element_size() for p in model.parameters())
     total += sum(b.numel() * b.element_size() for b in model.buffers())
     return total / (1024 ** 2)
 
@@ -101,32 +113,34 @@ def _gflops(model: torch.nn.Module, x: torch.Tensor) -> float:
     """GFLOPs for a single forward pass via torchinfo (returns nan on failure)."""
     try:
         from torchinfo import summary
-        stats = summary(
-            model,
-            input_data=x,
-            verbose=0,
-            device=DEVICE,
-        )
+        stats = summary(model, input_data=x, verbose=0, device=DEVICE)
         return stats.total_mult_adds / 1e9
     except Exception:
         return float('nan')
 
 
-def _parse_config_meta(name: str) -> dict:
-    """Extract input / early / late / smoother tokens from the filename."""
-    # expected pattern: exp_{inp}_{early}_{late}_{smooth}
-    parts = name.split('_')
-    if len(parts) == 5 and parts[0] == 'exp':
-        return {
-            'input_type'    : parts[1],
-            'spatial_early' : parts[2],
-            'spatial_late'  : parts[3],
-            'smoother'      : parts[4],
-        }
-    return {'input_type': '', 'spatial_early': '', 'spatial_late': '', 'smoother': ''}
+def _meta_from_cfg(cfg: dict) -> dict:
+    """Extract architecture metadata from the loaded YAML config dict.
+
+    Works for both shallow configs (exp_spe_rn_tt_bg style) and deep configs
+    (exp_e2_l1_s1 style) because it reads values directly from the YAML rather
+    than trying to parse the filename.
+    """
+    se  = cfg.get('spatial_early', {})
+    sl  = cfg.get('spatial_late', {})
+    tss = cfg.get('track_smoothing_spatial', {})
+    return {
+        'input_type'    : cfg.get('input', {}).get('type', ''),
+        'spatial_early' : se.get('type', ''),
+        'early_layers'  : se.get('n_layers', 1),
+        'spatial_late'  : sl.get('type', ''),
+        'late_layers'   : sl.get('n_layers', 1),
+        'smoother'      : tss.get('type', ''),
+        'smooth_layers' : tss.get('n_layers', 1),
+    }
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+# ── Core profiler ─────────────────────────────────────────────────────────────
 
 def run(configs_dir: Path) -> None:
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -140,9 +154,11 @@ def run(configs_dir: Path) -> None:
     timestamp   = datetime.now().strftime('%Y%m%d_%H%M%S')
     csv_path    = RESULTS_DIR / f'nas_configs_profile_{slug}_{timestamp}.csv'
 
-    fieldnames  = [
+    fieldnames = [
         'config_group', 'config_name',
-        'input_type', 'spatial_early', 'spatial_late', 'smoother',
+        'input_type', 'spatial_early', 'early_layers',
+        'spatial_late', 'late_layers',
+        'smoother', 'smooth_layers',
         'total_params', 'trainable_params', 'memory_mb', 'gflops', 't_ms',
         'out_act_shape', 'out_doa_shape', 'out_semantic_shape', 'status',
     ]
@@ -156,8 +172,7 @@ def run(configs_dir: Path) -> None:
 
         for cfg_path in config_paths:
             name = cfg_path.stem
-            meta = _parse_config_meta(name)
-            row  = {'config_group': slug, 'config_name': name, **meta}
+            row  = {'config_group': slug, 'config_name': name}
 
             print(f"\n{'─'*60}")
             print(f"  Config : {cfg_path.relative_to(REPO_ROOT)}")
@@ -166,6 +181,12 @@ def run(configs_dir: Path) -> None:
                 # ── Load config ───────────────────────────────────────────
                 with open(cfg_path) as f:
                     cfg = yaml.safe_load(f)
+
+                # ── Architecture metadata from YAML ───────────────────────
+                row.update(_meta_from_cfg(cfg))
+                print(f"  Arch   : early={row['spatial_early']}×{row['early_layers']}"
+                      f"  late={row['spatial_late']}×{row['late_layers']}"
+                      f"  smooth={row['smoother']}×{row['smooth_layers']}")
 
                 # ── Build model ───────────────────────────────────────────
                 model = NASModel(cfg).to(DEVICE).eval()
@@ -235,7 +256,9 @@ def run(configs_dir: Path) -> None:
             except Exception as e:
                 row['status'] = f'FAIL: {type(e).__name__}: {e}'
                 for k in ('total_params', 'trainable_params', 'memory_mb', 'gflops',
-                          't_ms', 'out_act_shape', 'out_doa_shape', 'out_semantic_shape'):
+                          't_ms', 'out_act_shape', 'out_doa_shape', 'out_semantic_shape',
+                          'input_type', 'spatial_early', 'early_layers',
+                          'spatial_late', 'late_layers', 'smoother', 'smooth_layers'):
                     row.setdefault(k, '')
                 print(f"  [FAIL] {e}")
                 traceback.print_exc()
@@ -250,10 +273,26 @@ def run(configs_dir: Path) -> None:
     print(f"{'='*60}\n")
 
 
+# ── Entry point ───────────────────────────────────────────────────────────────
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description='Profile NAS configurations.')
+    parser = argparse.ArgumentParser(
+        description='Profile NAS configurations.',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python tests/test_nas_configs.py
+      → all configs under configs/experiments/ (shallow + deep, recursive)
+
+  python tests/test_nas_configs.py --configs-dir configs/experiments/foa/shallow_spec
+      → shallow_spec group only
+
+  python tests/test_nas_configs.py --configs-dir configs/experiments/foa/deep_spec
+      → deep_spec group only
+        """,
+    )
     parser.add_argument(
-        '--configs-dir', default=None,
+        '--configs-dir', type=Path, default=None,
         help=(
             'Directory to search for exp_*.yaml configs (recursive). '
             'Defaults to configs/experiments/ (all groups).'
@@ -261,7 +300,11 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    configs_dir = Path(args.configs_dir).resolve() if args.configs_dir else CONFIGS_ROOT
+    configs_dir = (
+        args.configs_dir.resolve()
+        if args.configs_dir
+        else CONFIGS_ROOT
+    )
     run(configs_dir)
 
 

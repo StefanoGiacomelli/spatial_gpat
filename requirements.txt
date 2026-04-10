@@ -5,7 +5,9 @@ scipy
 #torchlibrosa
 soundfile
 pyyaml
+pandas
 matplotlib
+seaborn
 #lightning
 tensorboard
 #torchinfo
