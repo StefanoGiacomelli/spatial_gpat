@@ -44,7 +44,10 @@ import numpy as np
 import soundfile as sf
 import torch
 import lightning as L
+from scipy.sparse import csr_matrix as sp_csr
 from torch.utils.data import DataLoader, WeightedRandomSampler
+
+from experiments_at2sed.hlp import StrongHLP
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -187,6 +190,9 @@ class AudioSetStrongDataset(torch.utils.data.Dataset):
         max_negative_fraction: float = 1.0,
         augment: Optional[AudioSetAugment] = None,
         extra_audio_dirs: Optional[List[Path]] = None,
+        hlp_enabled: bool = False,
+        hlp_table_path: Optional[Path] = None,
+        balanced_sampler_formula: str = 'maxpos',
     ):
         super().__init__()
         self.split                = split
@@ -204,6 +210,17 @@ class AudioSetStrongDataset(torch.utils.data.Dataset):
         self._max_neg_frac        = float(max_negative_fraction)
         # augment is applied only during training
         self.augment              = augment if split == 'train' else None
+
+        # ── HLP (Hierarchical Label Propagation) ──────────────────────────────
+        if hlp_enabled:
+            self._hlp: Optional[StrongHLP] = StrongHLP(hlp_table_path)
+            print(f'[AudioSetStrongDataset] HLP enabled '
+                  f'(table: {Path(hlp_table_path) if hlp_table_path else "default"})')
+        else:
+            self._hlp = None
+
+        # ── Balanced sampler formula ──────────────────────────────────────────
+        self._sampler_formula = balanced_sampler_formula   # 'psla' | 'maxpos'
 
         # ── Load class map: MID → int index ──────────────────────────────────
         self._class_map: Dict[str, int] = self._load_class_map(class_map_csv)
@@ -475,6 +492,10 @@ class AudioSetStrongDataset(torch.utils.data.Dataset):
             if self.overlap_threshold == 0.0 or overlap / self.window_s >= self.overlap_threshold:
                 target[class_idx] = 1.0
 
+        # Apply Hierarchical Label Propagation if enabled
+        if self._hlp is not None:
+            target = self._hlp.propagate(target)
+
         return target
 
     # ── Pos-weights ───────────────────────────────────────────────────────────
@@ -519,23 +540,119 @@ class AudioSetStrongDataset(torch.utils.data.Dataset):
         """
         Per-item importance weights for ``WeightedRandomSampler``.
 
-        Items containing at least one positive label get weight
-        ``max(pos_weight[c] for active classes c)``; negative items
-        get weight 1.0.  This oversamples clips with rare classes.
+        Two formulas are available via ``balanced_sampler_formula``:
+
+        ``'maxpos'`` (default, original behaviour):
+            ``w_i = max(pos_weight[c] for active classes c)``
+            where ``pos_weight[c] = neg_windows[c] / pos_windows[c]``.
+            Negative items get weight 1.0.
+
+        ``'psla'`` (PSLA paper, balanced sampling):
+            ``w_i = sum_c( 1000 / (n_c + 0.01) )``
+            where ``n_c`` is the number of training items where class c is
+            active.  Negative items get weight 1.0.
+
+            Reference: Gong et al., "PSLA: Improving Audio Tagging with
+            Pretraining, Sampling, Labeling, and Aggregation," TASLP 2021.
 
         Returns:
             ``(len(self),)`` float32 Tensor.
         """
-        pw = self._compute_pos_weights()
+        if self._sampler_formula == 'psla':
+            return self._item_weights_psla()
+        return self._item_weights_maxpos()
 
-        weights: List[float] = []
-        for clip_id, t_start in self._items:
-            target = self._build_target(clip_id, t_start)
-            active = target.nonzero(as_tuple=False).view(-1).tolist()
-            w      = max((pw[c].item() for c in active), default=1.0)
-            weights.append(w)
+    def _item_weights_maxpos(self) -> torch.Tensor:
+        """max-pos-weight formula: w_i = max(pos_weight[c]) over active classes."""
+        all_active = self._compute_active_classes_fast()
+        n = len(self._items)
 
-        return torch.tensor(weights, dtype=torch.float32)
+        pos_counts = np.zeros(self.n_cls, dtype=np.float64)
+        for acts in all_active:
+            for c in acts:
+                pos_counts[c] += 1.0
+        neg_counts = np.maximum(n - pos_counts, 0.0)
+        pw = neg_counts / np.maximum(pos_counts, 1.0)   # (C,)
+
+        weights = np.ones(n, dtype=np.float32)
+        for i, acts in enumerate(all_active):
+            if acts:
+                weights[i] = float(max(pw[c] for c in acts))
+        return torch.from_numpy(weights)
+
+    def _item_weights_psla(self) -> torch.Tensor:
+        """PSLA balanced sampling formula: w_i = sum_c 1000 / (n_c + 0.01)."""
+        all_active = self._compute_active_classes_fast()
+
+        counts = np.zeros(self.n_cls, dtype=np.float64)
+        for acts in all_active:
+            for c in acts:
+                counts[c] += 1.0
+
+        weights = np.ones(len(self._items), dtype=np.float32)
+        for i, acts in enumerate(all_active):
+            if acts:
+                weights[i] = float(sum(1000.0 / (counts[c] + 0.01) for c in acts))
+
+        wt = torch.from_numpy(weights)
+        pos_mask = wt > 1.0
+        if pos_mask.any():
+            print(
+                f'[AudioSetStrongDataset] PSLA weights: '
+                f'pos items  min={wt[pos_mask].min():.2f}  '
+                f'max={wt[pos_mask].max():.2f}  '
+                f'mean={wt[pos_mask].mean():.2f}'
+            )
+        return wt
+
+    def _compute_active_classes_fast(self) -> List[List[int]]:
+        """
+        Compute (HLP-propagated) active class indices for every item.
+
+        Uses chunked scipy sparse matrix multiply instead of calling
+        ``_build_target()`` per item, avoiding O(N × C²) overhead when
+        HLP is enabled.
+        """
+        n = len(self._items)
+        CHUNK = 65536
+
+        hlp_sparse = None
+        if self._hlp is not None:
+            hlp_np = self._hlp._table.numpy()   # (C, C) float32
+            hlp_sparse = sp_csr(hlp_np)
+
+        print(
+            f'[AudioSetStrongDataset] Computing sampler weights '
+            f'for {n:,} windows'
+            + (' + HLP propagation' if hlp_sparse is not None else '')
+            + ' …'
+        )
+
+        all_active: List[List[int]] = []
+
+        for start in range(0, n, CHUNK):
+            end = min(start + CHUNK, n)
+            chunk_size = end - start
+            mat = np.zeros((chunk_size, self.n_cls), dtype=np.float32)
+
+            for i, (clip_id, t_start) in enumerate(self._items[start:end]):
+                t_end = t_start + self.window_s
+                for ev_s, ev_e, class_idx in self._events.get(clip_id, []):
+                    ov = min(ev_e, t_end) - max(ev_s, t_start)
+                    if ov <= 0.0:
+                        continue
+                    if (self.overlap_threshold == 0.0
+                            or ov / self.window_s >= self.overlap_threshold):
+                        mat[i, class_idx] = 1.0
+
+            if hlp_sparse is not None:
+                mat = (sp_csr(mat) @ hlp_sparse).toarray()
+                np.clip(mat, 0.0, 1.0, out=mat)
+
+            for i in range(chunk_size):
+                all_active.append(list(np.where(mat[i] > 0)[0]))
+
+        return all_active
 
     # ── Dataset interface ─────────────────────────────────────────────────────
 
@@ -647,10 +764,16 @@ class AudioSetStrongDataModule(L.LightningDataModule):
         self.val_seed             = int(data_cfg.get('val_seed', 42))
         self.num_workers          = int(data_cfg.get('num_workers', 4))
 
-        self.batch_size           = int(train_cfg.get('batch_size', 32))
-        self.use_weighted_sampler = bool(train_cfg.get('weighted_sampler', False))
-        self.pos_weight_max       = float(train_cfg.get('pos_weight_max', 20.0))
-        self.max_neg_frac         = float(train_cfg.get('max_negative_fraction', 1.0))
+        self.batch_size               = int(train_cfg.get('batch_size', 32))
+        self.use_weighted_sampler     = bool(train_cfg.get('weighted_sampler', False))
+        self.pos_weight_max           = float(train_cfg.get('pos_weight_max', 20.0))
+        self.max_neg_frac             = float(train_cfg.get('max_negative_fraction', 1.0))
+        self.balanced_sampler_formula = str(train_cfg.get('balanced_sampler_formula', 'maxpos'))
+
+        # ── HLP ───────────────────────────────────────────────────────────────
+        self.hlp_enabled    = bool(data_cfg.get('hlp_enabled', False))
+        _hlp_path           = data_cfg.get('hlp_table_path', None)
+        self.hlp_table_path = Path(_hlp_path) if _hlp_path else None
 
         # ── Augmentation (train only) ─────────────────────────────────────────
         if aug_cfg.get('enabled', False):
@@ -671,16 +794,27 @@ class AudioSetStrongDataModule(L.LightningDataModule):
 
     def setup(self, stage: Optional[str] = None) -> None:
         """Instantiate datasets for the requested stage."""
+        # Guard against Lightning calling setup() a second time after we already
+        # ran it manually in main_at2sed.py (avoids duplicate dataset construction
+        # and duplicate prints).
+        if stage in ('fit', None) and self._train_ds is not None:
+            return
+        if stage == 'test' and self._test_ds is not None:
+            return
+
         common_train = dict(
-            strong_tsv          = self.strong_tsv_train,
-            class_map_csv       = self.class_map,
-            window_s            = self.window_s,
-            hop_s               = self.hop_s,
-            n_cls               = self.n_cls,
-            overlap_threshold   = self.overlap_threshold,
-            val_fraction        = self.val_fraction,
-            val_seed            = self.val_seed,
-            max_negative_fraction = self.max_neg_frac,
+            strong_tsv               = self.strong_tsv_train,
+            class_map_csv            = self.class_map,
+            window_s                 = self.window_s,
+            hop_s                    = self.hop_s,
+            n_cls                    = self.n_cls,
+            overlap_threshold        = self.overlap_threshold,
+            val_fraction             = self.val_fraction,
+            val_seed                 = self.val_seed,
+            max_negative_fraction    = self.max_neg_frac,
+            hlp_enabled              = self.hlp_enabled,
+            hlp_table_path           = self.hlp_table_path,
+            balanced_sampler_formula = self.balanced_sampler_formula,
         )
 
         extra_dirs = ([self.audio_root_unbalanced]
@@ -719,12 +853,6 @@ class AudioSetStrongDataModule(L.LightningDataModule):
                 )
 
             self._pos_weights = pw
-            pw_min = pw.min().item()
-            pw_max = pw.max().item()
-            print(
-                f'[AudioSetStrongDataModule] pos_weight: '
-                f'min={pw_min:.2f}  max={pw_max:.1f}  cap={self.pos_weight_max}'
-            )
 
         if stage in ('test', None):
             self._test_ds = AudioSetStrongDataset(

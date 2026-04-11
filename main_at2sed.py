@@ -171,9 +171,12 @@ def _print_state(exp_name: str, exp_dir: Path) -> None:
     status = state.get('status', 'pending')
     info   = ''
     if status == 'completed':
+        monitor = state.get('checkpoint_monitor', 'val_map_macro')
+        score   = state.get('best_val_score', state.get('best_val_map', '?'))
+        score_s = f'{score:.4f}' if isinstance(score, float) else str(score)
         info = (
             f"done {state.get('completed_at', '')}  "
-            f"best_val_map={state.get('best_val_map', '?'):.4f}"
+            f"{monitor}={score_s}"
         )
     elif status == 'running':
         info = f"interrupted {state.get('started_at', '')}"
@@ -340,10 +343,20 @@ def _run_experiment(
             print(f'  [WARN] Could not restore metrics log: {exc}')
 
     # 6. Callbacks ────────────────────────────────────────────────────────────
+    # Checkpoint monitor is configurable via training.checkpoint_monitor in the YAML.
+    # Use an alias without '/' (e.g. 'val_map_macro', 'val_omap') because
+    # Lightning's ModelCheckpoint requires slash-free metric names.
+    ckpt_monitor = str(
+        cfg.get('training', {}).get('checkpoint_monitor', 'val_map_macro')
+    )
+    # Strip a leading 'val/' prefix if accidentally included in the YAML
+    if ckpt_monitor.startswith('val/'):
+        ckpt_monitor = 'val_' + ckpt_monitor[4:]
+
     best_cb = ModelCheckpoint(
         dirpath                 = str(ckpt_dir),
-        filename                = '{epoch:02d}_{val_map_macro:.4f}',
-        monitor                 = 'val_map_macro',
+        filename                = '{epoch:02d}_{' + ckpt_monitor + ':.4f}',
+        monitor                 = ckpt_monitor,
         mode                    = 'max',
         save_top_k              = 1,
         save_last               = True,
@@ -425,15 +438,16 @@ def _run_experiment(
     if last_path.exists():
         last_path.unlink()
 
-    best_val_map = float(best_cb.best_model_score or 0.0)
+    best_score = float(best_cb.best_model_score or 0.0)
     state = {
-        'status':       'completed',
-        'best_ckpt':    best_cb.best_model_path,
-        'best_val_map': best_val_map,
-        'completed_at': _now_iso(),
+        'status':            'completed',
+        'best_ckpt':         best_cb.best_model_path,
+        'best_val_score':    best_score,
+        'checkpoint_monitor': ckpt_monitor,
+        'completed_at':      _now_iso(),
     }
     _save_state(state, exp_dir)
-    print(f'  Completed.  best_val_map={best_val_map:.4f}')
+    print(f'  Completed.  {ckpt_monitor}={best_score:.4f}')
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -465,12 +479,34 @@ def main() -> None:
 
     cfg = _build_cfg(exp_yaml, args)
 
+    t_cfg = cfg.get('training', {})
+    d_cfg = cfg.get('data',     {})
+
+    loss_label = str(t_cfg.get('loss', 'bce')).upper()
+    if loss_label == 'OBCE':
+        loss_label += f'  beta={t_cfg.get("obce_beta", 1.0)}'
+
+    sampler_label = (
+        str(t_cfg.get('balanced_sampler_formula', 'maxpos')).upper()
+        if t_cfg.get('weighted_sampler', False)
+        else 'off'
+    )
+
+    hlp_label   = 'ON'  if d_cfg.get('hlp_enabled',  False) else 'off'
+    omap_label  = f'every {t_cfg.get("omap_every_n", 5)} epochs' \
+                  if t_cfg.get('omap_enabled', False) else 'off'
+    aug_label   = 'ON'  if cfg.get('augmentation', {}).get('enabled', False) else 'off'
+    monitor     = str(t_cfg.get('checkpoint_monitor', 'val_map_macro'))
+
     print(f'\n{"=" * 60}')
     print(f'[RUN]  {exp_name}')
-    print(f'       window={cfg["data"]["window_s"]:.1f}s  '
-          f'hop={cfg["data"]["hop_s"]:.1f}s  '
-          f'lr={cfg["training"]["lr"]}  '
-          f'epochs={cfg["training"]["epochs"]}')
+    print(f'       window={d_cfg["window_s"]:.1f}s  '
+          f'hop={d_cfg["hop_s"]:.1f}s  '
+          f'lr={t_cfg["lr"]}  '
+          f'epochs={t_cfg["epochs"]}')
+    print(f'       loss={loss_label}  sampler={sampler_label}  '
+          f'HLP={hlp_label}  aug={aug_label}')
+    print(f'       oMAP={omap_label}  monitor={monitor}')
     print(f'{"=" * 60}\n')
 
     # Start TensorBoard (port 6007 to avoid clash with main.py on 6006)

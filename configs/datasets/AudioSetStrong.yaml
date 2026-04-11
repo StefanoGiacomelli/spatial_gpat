@@ -5,24 +5,19 @@ data:
   strong_tsv_train:      /Volumes/Lexar/audioset-qiuqiangkong/metadata/audioset_train_strong.tsv
   strong_tsv_test:       /Volumes/Lexar/audioset-qiuqiangkong/metadata/audioset_eval_strong.tsv
   class_map:             configs/datasets/audioset_strong_label_map.csv
-  val_fraction: 0.2
-  val_seed: 42
-  num_workers: 4
-  overlap_threshold: 0.0
+  val_fraction:          0.2
+  val_seed:              42
+  num_workers:           4
+  overlap_threshold:     0.0
+  hlp_enabled:           true
+  hlp_table_path:        configs/datasets/audioset_strong_hlp.pt
 
 augmentation:
-  enabled: false
-  p_gain: 0.4
-  gain_db: 6.0
-  p_noise: 0.3
+  enabled:      false
+  p_gain:       0.4
+  gain_db:      6.0
+  p_noise:      0.3
   noise_snr_db: 35.0
-
-training:
-  pos_weight_max: 20.0
-  weighted_sampler: false
-  class_balance: false
-  rare_class_threshold: 0.1
-  max_negative_fraction: 1.0
 
 semantic:
   pretrained_class_map: /Volumes/Lexar/audioset-qiuqiangkong/metadata/class_labels_indices.csv

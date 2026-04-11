@@ -47,6 +47,8 @@ import lightning as L
 
 from .model import AT2SEDModel
 from .loss  import SEDMultiLabelLoss, SEDMultiLabelMetrics
+from .obce  import OBCELoss
+from .omap  import OntologyMAP
 
 
 class AT2SEDLightningModule(L.LightningModule):
@@ -78,12 +80,30 @@ class AT2SEDLightningModule(L.LightningModule):
         super().__init__()
         self.save_hyperparameters({'cfg': cfg})
 
-        self.model    = AT2SEDModel(cfg)
-        self.loss_fn  = SEDMultiLabelLoss(pos_weight=None)   # weights set later
-        self.metrics  = SEDMultiLabelMetrics(
+        train_cfg = cfg.get('training', {})
+
+        self.model = AT2SEDModel(cfg)
+
+        # ── Loss function ─────────────────────────────────────────────────────
+        loss_type = str(train_cfg.get('loss', 'bce')).lower()
+        if loss_type == 'obce':
+            self.loss_fn = OBCELoss(
+                beta=float(train_cfg.get('obce_beta', 1.0)),
+            )
+        else:
+            self.loss_fn = SEDMultiLabelLoss(pos_weight=None)   # weights set later
+
+        self.metrics = SEDMultiLabelMetrics(
             n_cls     = self.model.n_cls,
-            threshold = float(cfg.get('training', {}).get('inference_threshold', 0.5)),
+            threshold = float(train_cfg.get('inference_threshold', 0.5)),
         )
+
+        # ── OMAP ─────────────────────────────────────────────────────────────
+        self._omap_enabled  = bool(train_cfg.get('omap_enabled', False))
+        self._omap_every_n  = int(train_cfg.get('omap_every_n', 5))
+        self._omap: Optional[OntologyMAP] = None
+        if self._omap_enabled:
+            self._omap = OntologyMAP()   # cache_path injected via set_metrics_path()
 
         # JSON metrics log — path injected via set_metrics_path() after construction
         self._metrics_path: Optional[Path] = None
@@ -95,21 +115,28 @@ class AT2SEDLightningModule(L.LightningModule):
         """
         Inject the JSON log path after construction.
 
-        Called by ``main_sed_only.py`` so that per-epoch and test metrics are
-        persisted to ``{run_dir}/metrics/{exp_name}.json``.
+        Called by ``main_at2sed.py`` so that per-epoch and test metrics are
+        persisted to ``{run_dir}/metrics.json``.  Also wires up the OMAP
+        weight cache alongside the metrics file.
         """
         self._metrics_path = Path(path)
+        if self._omap is not None:
+            cache_path = Path(path).parent / 'omap_weight_cache.pkl'
+            self._omap._cache_path = cache_path
 
     def set_pos_weight(self, pos_weight: torch.Tensor) -> None:
         """
         Inject class-imbalance weights computed from the training dataset.
 
-        Called by ``main_sed_only.py`` after ``DataModule.setup('fit')``
-        has computed the per-class statistics.
+        Called by ``main_at2sed.py`` after ``DataModule.setup('fit')``
+        has computed the per-class statistics.  No-op when using OBCE loss
+        (which does not use per-class positive weights).
 
         Args:
             pos_weight : ``(n_cls,)`` float32 Tensor.
         """
+        if isinstance(self.loss_fn, OBCELoss):
+            return   # OBCE does not use per-class pos_weight
         self.loss_fn.set_pos_weight(pos_weight)
         pw_min = pos_weight.min().item()
         pw_max = pos_weight.max().item()
@@ -171,6 +198,11 @@ class AT2SEDLightningModule(L.LightningModule):
         self.log('val/loss', loss, on_epoch=True, sync_dist=True)
         self.metrics.update(logits, y)
 
+        # Feed OMAP accumulator if enabled
+        if self._omap is not None:
+            probs = torch.sigmoid(logits)
+            self._omap.update(probs, y)
+
     def on_validation_epoch_end(self) -> None:
         """
         Flush metric accumulators, log all val metrics, append to JSON log.
@@ -185,6 +217,18 @@ class AT2SEDLightningModule(L.LightningModule):
         # Alias without slash for ModelCheckpoint monitor
         self.log('val_map_macro', float(results['map_macro']),
                  on_epoch=True, sync_dist=True)
+
+        # ── OMAP (computed every omap_every_n epochs) ─────────────────────────
+        if self._omap is not None:
+            epoch = self.current_epoch
+            if epoch % self._omap_every_n == 0:
+                omap_val = self._omap.compute()
+                self.log('val/omap', omap_val, on_epoch=True, sync_dist=True,
+                         prog_bar=True)
+                self.log('val_omap', omap_val, on_epoch=True, sync_dist=True)
+                results['omap'] = omap_val
+                print(f'[AT2SEDLightningModule] epoch={epoch}  val/omap={omap_val:.4f}')
+            self._omap.reset()
 
         # ── JSON log ─────────────────────────────────────────────────────────
         if self._metrics_path is not None:
@@ -237,35 +281,19 @@ class AT2SEDLightningModule(L.LightningModule):
 
     def configure_optimizers(self):
         """
-        Adam optimizer + CosineAnnealingLR scheduler.
+        Adam optimizer with fixed learning rate (no scheduler).
 
-        LR anneals from ``cfg['training']['lr']`` (default 1e-3) down to
-        ``cfg['training']['lr_min']`` (default 1e-5) over the full training
-        budget (``cfg['training']['epochs']``).
+        LR is read from ``cfg['training']['lr']`` (default 1e-3).
 
         Returns
         -------
-        dict with ``optimizer`` and ``lr_scheduler`` keys (Lightning format).
+        ``torch.optim.Adam`` instance (Lightning format).
         """
         train_cfg = self.hparams['cfg'].get('training', {})
-        lr        = float(train_cfg.get('lr',     1e-3))
-        lr_min    = float(train_cfg.get('lr_min', 1e-5))
-        t_max     = int(train_cfg.get('epochs',   30))
+        lr        = float(train_cfg.get('lr', 1e-3))
 
         params    = [p for p in self.model.parameters() if p.requires_grad]
-        optimizer = torch.optim.Adam(params, lr=lr)
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer, T_max=t_max, eta_min=lr_min,
-        )
-        return {
-            'optimizer':    optimizer,
-            'lr_scheduler': {
-                'scheduler': scheduler,
-                'interval':  'epoch',
-                'frequency': 1,
-                'name':      'lr/cosine',
-            },
-        }
+        return torch.optim.Adam(params, lr=lr)
 
     # ── Trainable params helper ───────────────────────────────────────────────
 
