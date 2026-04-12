@@ -20,11 +20,11 @@ Both files are produced by **submatrix extraction** from the 527×527 originals:
     HLP → identity only (no ancestors).
     Distance → 0 on diagonal; ``max_dist + 1`` off-diagonal (maximally far).
 
-Source matrices:
-  - HLP:      hierarchical-label-propagation/src/.../HLP_lookup_table.pt
-              (pre-built from AudioSet ontology.json by HLP authors)
-  - Distance: ontology-aware-audio-tagging/ontology_audio_tagging/
-              audioset_graph_distance.py  (hardcoded 527×527)
+Source matrices (committed to configs/datasets/ — repos no longer required):
+  - HLP:      configs/datasets/audioset_std_hlp_lookup.pt
+              (527×527 bool, originally from hierarchical-label-propagation)
+  - Distance: configs/datasets/audioset_std_graph_distance.npy
+              (527×527 float32, originally from ontology-aware-audio-tagging)
 
 Usage::
 
@@ -46,8 +46,8 @@ import torch
 # ── Paths ─────────────────────────────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parent.parent
 
-HLP_SRC    = ROOT / 'hierarchical-label-propagation' / 'src' / \
-             'hierarchical_label_propagation' / 'HLP_lookup_table.pt'
+HLP_SRC    = ROOT / 'configs' / 'datasets' / 'audioset_std_hlp_lookup.pt'
+DIST_SRC   = ROOT / 'configs' / 'datasets' / 'audioset_std_graph_distance.npy'
 LABEL_MAP  = ROOT / 'configs' / 'datasets' / 'audioset_strong_label_map.csv'
 AS_STD_CSV = Path('/Volumes/Lexar/audioset-qiuqiangkong/metadata/class_labels_indices.csv')
 
@@ -59,6 +59,8 @@ N_STRONG = 456
 # ── Dependency check ──────────────────────────────────────────────────────────
 if not HLP_SRC.exists():
     sys.exit(f'[ERROR] HLP source not found: {HLP_SRC}')
+if not DIST_SRC.exists():
+    sys.exit(f'[ERROR] Distance source not found: {DIST_SRC}')
 if not LABEL_MAP.exists():
     sys.exit(f'[ERROR] Label map not found: {LABEL_MAP}')
 if not AS_STD_CSV.exists():
@@ -71,9 +73,7 @@ hlp_std = torch.load(str(HLP_SRC), weights_only=True)   # bool (527, 527)
 assert hlp_std.shape == (527, 527), f'Unexpected HLP shape: {hlp_std.shape}'
 
 print('[2/4] Loading AudioSet graph distances (527×527) …')
-sys.path.insert(0, str(ROOT / 'ontology-aware-audio-tagging'))
-from ontology_audio_tagging.audioset_graph_distance import get_audioset_graph_distance
-dist_std = np.array(get_audioset_graph_distance(), dtype=np.float32)   # (527, 527)
+dist_std = np.load(str(DIST_SRC)).astype(np.float32)    # (527, 527)
 assert dist_std.shape == (527, 527), f'Unexpected dist shape: {dist_std.shape}'
 max_dist = float(dist_std.max())
 print(f'    max distance in AS-Std graph: {max_dist}')

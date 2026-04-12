@@ -18,8 +18,3 @@ __pycache__/
 /setup_venv.sh
 
 /neural_srp/
-
-/psla/
-/hierarchical-label-propagation/
-/ontology-aware-audio-tagging/
-/salt/
