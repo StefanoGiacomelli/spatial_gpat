@@ -159,6 +159,9 @@ class ResNetBlock(nn.Module):
         stride         (tuple[int]):    (time_stride, freq_stride). Default (1,1).
         use_msca       (bool):          Insert MSCA before residual add. Default False.
         msca_reduction (int):           MSCA reduction ratio. Default 4.
+        dropout        (float):         Dropout2d rate applied after the final ReLU.
+                                        Drops entire feature-map channels (appropriate
+                                        for 4-D spatial tensors). Default 0.0 (off).
 
     Input:  (B, in_channels,  T,  F)
     Output: (B, out_channels, T', F')   T',F' depend on stride
@@ -171,6 +174,7 @@ class ResNetBlock(nn.Module):
         stride:         Tuple[int, int] = (1, 1),
         use_msca:       bool            = False,
         msca_reduction: int             = 4,
+        dropout:        float           = 0.0,
     ):
         super().__init__()
 
@@ -183,6 +187,7 @@ class ResNetBlock(nn.Module):
 
         self.msca  = (MultiScaleChannelAttention(out_channels, msca_reduction)
                       if use_msca else None)
+        self.drop  = nn.Dropout2d(dropout) if dropout > 0.0 else None
 
         # Projection shortcut when shapes change
         needs_proj = (in_channels != out_channels) or (stride != (1, 1))
@@ -202,8 +207,10 @@ class ResNetBlock(nn.Module):
         if self.msca is not None:
             out = self.msca(out)
 
-        out = out + self.shortcut(x)
-        return F.relu(out, inplace=True)
+        out = F.relu(out + self.shortcut(x), inplace=True)
+        if self.drop is not None:
+            out = self.drop(out)
+        return out
 
 
 # ============================================================

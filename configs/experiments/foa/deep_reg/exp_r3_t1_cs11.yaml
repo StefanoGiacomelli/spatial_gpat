@@ -1,8 +1,9 @@
-# Deep NAS — base: spe_rn_tt_bg
-# early=3  |  late=2  |  smooth=2
+# deep_reg — early=3 ResBlock | late=1x TrackTransformer | smooth=1 BiGRU
+# CrossStitch early=true  late=true
+# Regularization: spatial_early.dropout=0.4, spatial_late.dropout=0.3, bigru.dropout=0.3
 
 experiment:
-  name: exp_e3_l2_s2
+  name: exp_r3_t1_cs11
   seed: 42
 
 input:
@@ -19,8 +20,8 @@ semantic:
   head_group:  {init: pretrained, frozen: false}
 
 cross_stitch:
-  cs_early_enabled: false
-  cs_late_enabled: false
+  cs_early_enabled: true
+  cs_late_enabled:  true
   C_bridge_early: 64
   C_bridge_late: 128
 
@@ -31,17 +32,19 @@ spatial_early:
   use_msca: true
   msca_reduction: 4
   stride: [1, 1]
+  dropout: 0.4
 
 spatial_late:
   type: track_transformer
-  n_layers: 2
+  n_layers: 1
   d_model: 128
   n_heads: 4
   n_tracks: 2
+  dropout: 0.3
 
 track_smoothing_spatial:
   type: bigru
-  n_layers: 2
+  n_layers: 1
   hidden_size: 256
   dropout: 0.3
 

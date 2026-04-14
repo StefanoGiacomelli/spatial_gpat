@@ -190,6 +190,7 @@ def _build_spatial_early(cfg: dict, in_channels: int) -> Tuple[nn.ModuleList, in
                 stride         = tuple(cfg.get('stride', [1, 1])),
                 use_msca       = cfg.get('use_msca', False),
                 msca_reduction = cfg.get('msca_reduction', 4),
+                dropout        = cfg.get('dropout', 0.0),
             )
         else:
             raise ValueError(f"[NASModel] Unknown spatial_early type: '{typ}'")

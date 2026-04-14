@@ -1,5 +1,5 @@
 experiment:
-  name: at2sed_default
+  name: at2sed_obce
   seed: 42
 
 model:

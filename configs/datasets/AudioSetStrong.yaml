@@ -14,7 +14,7 @@ data:
 
 augmentation:
   enabled:      false
-  p_gain:       0.4
+  p_gain:       0.3
   gain_db:      6.0
   p_noise:      0.3
   noise_snr_db: 35.0

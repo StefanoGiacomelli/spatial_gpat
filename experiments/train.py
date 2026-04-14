@@ -167,10 +167,14 @@ class NASLightningModule(L.LightningModule):
                 print(f'[NASLightningModule] pos_weight unavailable: {exc}')
 
         beta_sed       = float(train_cfg.get('beta_sed', 0.5))
-        self.tpit_loss = tPITLoss(N=N, beta=beta_sed, pos_weight=pos_weight)
+        focal_gamma    = float(train_cfg.get('focal_gamma', 0.0))
+        self.tpit_loss = tPITLoss(N=N, beta=beta_sed, pos_weight=pos_weight,
+                                  focal_gamma=focal_gamma)
         self.sem_loss  = SemanticPresenceLoss(pos_weight=pos_weight)
         self.metrics     = SELDMetrics(angle_thresh=angle_thresh)
         self.sem_metrics = SemanticClassificationMetrics(n_classes)
+
+        self._perclass_metrics = bool(train_cfg.get('perclass_metrics', False))
 
         # JSON metrics log — path injected via set_metrics_path() by training script
         self._metrics_path: Optional[Path] = None
@@ -306,6 +310,12 @@ class NASLightningModule(L.LightningModule):
             self._epoch_metrics_log.append(epoch_dict)
             self._flush_metrics_log()
 
+            if self._perclass_metrics:
+                self._flush_perclass_metrics(
+                    split='val', epoch=self.current_epoch,
+                    rows=self.metrics.compute_perclass(),
+                )
+
     # ------------------------------------------------------------------
     # Test
     # ------------------------------------------------------------------
@@ -354,6 +364,12 @@ class NASLightningModule(L.LightningModule):
             self._epoch_metrics_log.append(test_dict)
             self._flush_metrics_log()
 
+            if self._perclass_metrics:
+                self._flush_perclass_metrics(
+                    split='test', epoch='test',
+                    rows=self.metrics.compute_perclass(),
+                )
+
             if conf_mat is not None:
                 cm_path = self._metrics_path.with_name(
                     self._metrics_path.stem + '_confusion_matrix.json'
@@ -378,7 +394,7 @@ class NASLightningModule(L.LightningModule):
         """
         lr        = float(self.hparams['cfg'].get('training', {}).get('lr', 5e-4))
         params    = [p for p in self.model.parameters() if p.requires_grad]
-        optimizer = torch.optim.Adam(params, lr=lr)
+        optimizer = torch.optim.AdamW(params, lr=lr, weight_decay=1e-4)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer,
             T_max   = self.trainer.max_epochs,
@@ -400,6 +416,28 @@ class NASLightningModule(L.LightningModule):
         with open(tmp, 'w') as fh:
             json.dump(self._epoch_metrics_log, fh, indent=2, default=float)
         tmp.replace(self._metrics_path)
+
+    def _flush_perclass_metrics(self, split: str, epoch, rows: list) -> None:
+        """Append per-class SED metrics to ``perclass_sed_metrics.json``.
+
+        File format: list of dicts, each with ``epoch``, ``split``, and
+        per-class keys (``class_idx``, ``tp``, ``fp``, ``fn``,
+        ``precision``, ``recall``, ``f1``).
+        """
+        pc_path = self._metrics_path.with_name('perclass_sed_metrics.json')
+        existing: list = []
+        if pc_path.exists():
+            with open(pc_path) as fh:
+                try:
+                    existing = json.load(fh)
+                except json.JSONDecodeError:
+                    pass
+        for row in rows:
+            existing.append({'epoch': epoch, 'split': split, **row})
+        tmp = pc_path.with_suffix('.tmp')
+        with open(tmp, 'w') as fh:
+            json.dump(existing, fh, indent=2, default=float)
+        tmp.replace(pc_path)
 
     # ------------------------------------------------------------------
     # Convenience

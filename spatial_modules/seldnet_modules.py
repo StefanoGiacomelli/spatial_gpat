@@ -297,6 +297,6 @@ class BiGRU(nn.Module):
             bwd_out, _  = bwd(x.flip(1))       # backward: feed reversed sequence
             bwd_out     = bwd_out.flip(1)      # re-align outputs to original order
             x           = fwd_out * bwd_out    # merge_mode = 'mul'
-            if i < self.num_layers - 1:
+            if i < self.num_layers - 1 or self.num_layers == 1:
                 x = self.dropout(x)
         return x

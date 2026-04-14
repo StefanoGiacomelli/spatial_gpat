@@ -16,5 +16,3 @@ __pycache__/
 /gpu_job.sh
 /main.sh
 /setup_venv.sh
-
-/neural_srp/

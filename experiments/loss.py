@@ -125,12 +125,17 @@ class tPITLoss(nn.Module):
     EIN-SELD and standard PIT literature).
 
     Args:
-        N          : number of tracks.
-        beta       : weight for SED (BCE) vs DOA (MSE).  Default 0.5.
-        pos_weight : (C,) FloatTensor of per-class BCE weights, or None.
-                     Typically ``neg_frames[c] / pos_frames[c]`` computed
-                     from training data.  Registered as a buffer so it moves
-                     to the correct device automatically.
+        N           : number of tracks.
+        beta        : weight for SED (BCE) vs DOA (MSE).  Default 0.5.
+        pos_weight  : (C,) FloatTensor of per-class BCE weights, or None.
+                      Typically ``neg_frames[c] / pos_frames[c]`` computed
+                      from training data.  Registered as a buffer so it moves
+                      to the correct device automatically.
+        focal_gamma : Focal-loss focusing exponent γ ≥ 0.  Default 0.0 → standard
+                      BCE.  When > 0, down-weights easy examples via
+                      ``(1 - p)^γ`` factor (Lin et al. 2017).  Applied to the
+                      gradient loss only; permutation selection always uses plain
+                      BCE to avoid biasing track assignment.
 
     Forward:
         act_logits : (B, T, N, C)     — raw SED logits from ``head_sed``
@@ -144,11 +149,13 @@ class tPITLoss(nn.Module):
     """
 
     def __init__(self, N: int, beta: float = 0.5,
-                 pos_weight: Optional[torch.Tensor] = None):
+                 pos_weight: Optional[torch.Tensor] = None,
+                 focal_gamma: float = 0.0):
         """Precompute all N! permutation indices as a registered buffer."""
         super().__init__()
-        self.N    = N
-        self.beta = beta
+        self.N           = N
+        self.beta        = beta
+        self.focal_gamma = focal_gamma
         perms = list(itertools.permutations(range(N)))   # P = N! tuples
         # (P, N) long tensor — stays on the same device as the model
         self.register_buffer(
@@ -205,12 +212,20 @@ class tPITLoss(nn.Module):
             pw = None
 
         # ── Per-permutation per-frame loss: (BTC, P) ─────────────────────
-        bce_all = F.binary_cross_entropy_with_logits(
+        act_b_exp = act_b.unsqueeze(1).expand_as(act_l_all)
+        bce_elem = F.binary_cross_entropy_with_logits(
             act_l_all,
-            act_b.unsqueeze(1).expand_as(act_l_all),
+            act_b_exp,
             pos_weight=pw,
             reduction='none',
-        ).mean(dim=-1)                                             # avg over N → (BTC, P)
+        )                                                          # (BTC, P, N)
+        if self.focal_gamma > 0.0:
+            # Focal weighting: (1 - p)^γ, detached to avoid double gradient
+            probs_all = torch.sigmoid(act_l_all).detach()         # (BTC, P, N)
+            focal_w   = (1.0 - probs_all).pow(self.focal_gamma)
+            bce_all   = (focal_w * bce_elem).mean(dim=-1)         # (BTC, P)
+        else:
+            bce_all = bce_elem.mean(dim=-1)                       # (BTC, P)
 
         mse_all = (
             doa_r_all - doa_b.unsqueeze(1).expand_as(doa_r_all)
@@ -406,6 +421,36 @@ class SELDMetrics:
             'F_20':       f_20,
             'SELD_score': seld,
         }
+
+    def compute_perclass(self) -> list:
+        """Return per-class detection F1, precision, and recall.
+
+        Returns
+        -------
+        list of dict: one entry per class index, with keys
+            ``class_idx``, ``tp``, ``fp``, ``fn``, ``precision``,
+            ``recall``, ``f1``.
+        """
+        C = self._n_classes
+        rows = []
+        for c in range(C):
+            tp = self._tp[c]
+            fp = self._fp[c]
+            fn = self._fn[c]
+            precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+            recall    = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+            f1        = (2 * precision * recall / (precision + recall)
+                         if (precision + recall) > 0 else 0.0)
+            rows.append({
+                'class_idx': c,
+                'tp':        tp,
+                'fp':        fp,
+                'fn':        fn,
+                'precision': precision,
+                'recall':    recall,
+                'f1':        f1,
+            })
+        return rows
 
 
 # ══════════════════════════════════════════════════════════════════════════════
