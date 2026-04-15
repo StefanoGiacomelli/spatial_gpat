@@ -394,7 +394,7 @@ class NASLightningModule(L.LightningModule):
         """
         lr        = float(self.hparams['cfg'].get('training', {}).get('lr', 5e-4))
         params    = [p for p in self.model.parameters() if p.requires_grad]
-        optimizer = torch.optim.AdamW(params, lr=lr, weight_decay=1e-4)
+        optimizer = torch.optim.Adam(params, lr=lr)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer,
             T_max   = self.trainer.max_epochs,
