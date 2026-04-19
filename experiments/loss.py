@@ -220,9 +220,11 @@ class tPITLoss(nn.Module):
             reduction='none',
         )                                                          # (BTC, P, N)
         if self.focal_gamma > 0.0:
-            # Focal weighting: (1 - p)^γ, detached to avoid double gradient
+            # Focal weighting per Lin et al. 2017: (1 - p_t)^γ
+            # p_t = p when y=1, p_t = 1-p when y=0 (prob of the true label)
             probs_all = torch.sigmoid(act_l_all).detach()         # (BTC, P, N)
-            focal_w   = (1.0 - probs_all).pow(self.focal_gamma)
+            p_t       = torch.where(act_b_exp.bool(), probs_all, 1.0 - probs_all)
+            focal_w   = (1.0 - p_t).pow(self.focal_gamma)
             bce_all   = (focal_w * bce_elem).mean(dim=-1)         # (BTC, P)
         else:
             bce_all = bce_elem.mean(dim=-1)                       # (BTC, P)
