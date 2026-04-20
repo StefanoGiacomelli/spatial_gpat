@@ -120,9 +120,30 @@ class MultiScaleChannelAttention(nn.Module):
             nn.BatchNorm2d(n_channels),
         )
 
+    def train(self, mode: bool = True):
+        super().train(mode)
+        # global_path always receives (B, C, 1, 1) — one spatial location.
+        # BatchNorm2d cannot compute meaningful batch statistics over a single
+        # value, and crashes with B=1. Keep global_path's BN layers in eval
+        # mode so they always use running stats (accumulated during training
+        # when B>1, or the initialisation defaults when B=1 from the start).
+        for m in self.global_path.modules():
+            if isinstance(m, nn.BatchNorm2d):
+                m.eval()
+        return self
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Global context: collapse T and F, pass through bottleneck
         g = x.mean(dim=(2, 3), keepdim=True)   # (B, C, 1, 1)
+
+        # global_path always receives a (B, C, 1, 1) tensor — one spatial value
+        # per channel. BatchNorm2d in training mode requires >1 value to compute
+        # variance and crashes with B=1. Force eval mode unconditionally here;
+        # running stats (mean=0, var=1 or checkpoint values) are always valid.
+        for _m in self.global_path.modules():
+            if isinstance(_m, torch.nn.BatchNorm2d):
+                _m.eval()
+
         G = self.global_path(g)                 # (B, C, 1, 1) — broadcasts with L below
 
         # Local context: per-location bottleneck
