@@ -31,17 +31,22 @@ DISIM Department — University of L'Aquila
 import csv
 from pathlib import Path
 
-_ROOT = Path(__file__).resolve().parent.parent
+import yaml
 
-# ── Input files ───────────────────────────────────────────────────────────────
-_STRONG_TSV   = Path('/Volumes/Lexar/audioset-qiuqiangkong/metadata/mid_to_display_name.tsv')
-_AS_STD_CSV   = Path('/Volumes/Lexar/audioset-qiuqiangkong/metadata/class_labels_indices.csv')
+_ROOT        = Path(__file__).resolve().parent.parent
+_DATASET_CFG = _ROOT / 'configs' / 'datasets' / 'AudioSetStrong.yaml'
 
 # ── Output file ───────────────────────────────────────────────────────────────
 _OUT_CSV = _ROOT / 'configs' / 'datasets' / 'audioset_strong_label_map.csv'
 
 
 def main() -> None:
+    # ── Load paths from config ────────────────────────────────────────────────
+    with open(_DATASET_CFG) as fh:
+        cfg = yaml.safe_load(fh)
+    _STRONG_TSV = Path(cfg['semantic']['mid_to_display_name_tsv'])
+    _AS_STD_CSV = Path(cfg['data']['class_map'])
+
     # ── Load AudioSet-Strong MIDs ─────────────────────────────────────────────
     strong: dict[str, str] = {}   # mid → display_name
     with open(_STRONG_TSV) as fh:

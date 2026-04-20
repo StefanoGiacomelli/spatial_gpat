@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-probe_datamodule.py — Real-Time DataModule Label Diagnostics
-=============================================================
+tests/test_audioset_strong.py — Real-Time DataModule Label Diagnostics
+=======================================================================
 Instantiates AudioSetStrongDataModule exactly as main_at2sed.py does and
 iterates through all batches of the chosen split, printing per-batch and
 aggregate statistics about label distribution.
@@ -13,13 +13,13 @@ are needed.
 Usage
 -----
     # Train split, window=0.5s, all batches
-    .venv/bin/python probe_datamodule.py
+    .venv/bin/python tests/test_audioset_strong.py
 
     # First 100 batches only, print every 10
-    .venv/bin/python probe_datamodule.py --batches 100 --print-every 10
+    .venv/bin/python tests/test_audioset_strong.py --batches 100 --print-every 10
 
     # Val split, window=2s
-    .venv/bin/python probe_datamodule.py --split val --window-s 2.0 --hop-s 2.0
+    .venv/bin/python tests/test_audioset_strong.py --split val --window-s 2.0 --hop-s 2.0
 
 Author
 ------
@@ -51,7 +51,7 @@ from datasets.audioset_strong import AudioSetStrongDataModule  # noqa: E402
 # ── Constants (mirror main_at2sed.py) ─────────────────────────────────────────
 _CONFIGS_DIR = _ROOT / 'configs' / 'experiments_at2sed'
 _DATASET_CFG = _ROOT / 'configs' / 'datasets' / 'AudioSetStrong.yaml'
-_DEFAULT_EXP = 'at2sed_default'
+_DEFAULT_EXP = 'at2sed_bce'
 
 
 # ══════════════════════════════════════════════════════════════════════════════

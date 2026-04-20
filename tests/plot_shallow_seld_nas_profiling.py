@@ -1,6 +1,6 @@
 """
-tests/plot_nas_profiling.py
-============================
+tests/plot_shallow_seld_nas_profiling.py
+=========================================
 Scatter plot of NAS experiment configurations.
 
 Reads a NAS profiling CSV from ``results/`` and produces one SVG figure in
@@ -12,10 +12,10 @@ Reads a NAS profiling CSV from ``results/`` and produces one SVG figure in
 Usage
 -----
     # latest CSV (all groups)
-    python tests/plot_nas_profiling.py
+    python tests/plot_shallow_seld_nas_profiling.py
 
     # specific CSV
-    python tests/plot_nas_profiling.py --csv results/nas_configs_profile_foa_shallow_spec_20260405_120000.csv
+    python tests/plot_shallow_seld_nas_profiling.py --csv results/nas_configs_profile_foa_shallow_spec_20260405_120000.csv
 
 Author
 ------

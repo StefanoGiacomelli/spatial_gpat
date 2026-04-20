@@ -1,6 +1,6 @@
 """
-tests/analyze_audioset_strong.py — AudioSet-Strong Dataset Analysis
-====================================================================
+tests/plot_audioset_strong.py — AudioSet-Strong Dataset Analysis
+================================================================
 Pre-training analysis of the AudioSet-Strong dataset.  All statistics are
 computed **post-windowing** (on the training item index), so they directly
 reflect what the model sees during training at each window duration.
@@ -31,10 +31,10 @@ Usage
 ::
 
     # Uses default paths from configs/datasets/AudioSetStrong.yaml
-    .venv/bin/python tests/analyze_audioset_strong.py
+    .venv/bin/python tests/plot_audioset_strong.py
 
     # Override window sizes to analyze
-    .venv/bin/python tests/analyze_audioset_strong.py \\
+    .venv/bin/python tests/plot_audioset_strong.py \\
         --window-sizes 0.5 1 2 5 10
 
 Author

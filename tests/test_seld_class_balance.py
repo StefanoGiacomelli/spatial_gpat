@@ -1,6 +1,6 @@
 """
-tests/test_class_balance.py
-============================
+tests/test_seld_class_balance.py
+=================================
 Class-balance and class-representativeness analysis for STARSS23 and
 TAU-NIGENS2021, for each available split, in both clip-mode and windowed-mode.
 
@@ -39,16 +39,16 @@ Output
 Usage
 -----
   # Analyse both datasets, both modes, default 10 s / 5 s windows
-  .venv/bin/python tests/test_class_balance.py
+  .venv/bin/python tests/test_seld_class_balance.py
 
   # Single dataset
-  .venv/bin/python tests/test_class_balance.py --dataset STARSS23
+  .venv/bin/python tests/test_seld_class_balance.py --dataset STARSS23
 
   # Custom window
-  .venv/bin/python tests/test_class_balance.py --window-s 5 --hop-s 2.5
+  .venv/bin/python tests/test_seld_class_balance.py --window-s 5 --hop-s 2.5
 
   # Skip CSV export
-  .venv/bin/python tests/test_class_balance.py --no-csv
+  .venv/bin/python tests/test_seld_class_balance.py --no-csv
 
 Author
 ------
@@ -58,10 +58,11 @@ DISIM Department — University of L'Aquila
 
 import argparse
 import csv
+import json
 import sys
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
@@ -383,6 +384,20 @@ def _export_csv(
                 f'{cl_pct:.4f}',
                 f'{wi_pct:.4f}',
             ])
+
+    # JSON sidecar with aggregate counts (read by plot_class_balance.py)
+    meta = {
+        'dataset':    dataset,
+        'split':      split,
+        'n_clips':    n_clips,
+        'n_windows':  total_windows,
+        'window_s':   window_s,
+        'hop_s':      hop_s,
+    }
+    meta_path = RESULTS_DIR / f'class_balance_{dataset}_{split}_meta.json'
+    with open(meta_path, 'w') as fh:
+        json.dump(meta, fh, indent=2)
+
     return fname
 
 

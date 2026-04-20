@@ -1,10 +1,10 @@
 """
-experiments — NAS SELD Pipeline Public API
-==========================================
+experiments_nas_seld — NAS SELD Pipeline Public API
+====================================================
 Exports all pipeline components for end-to-end training and evaluation:
 
-    from experiments import NASModel, NASLightningModule
-    from experiments import ADPITLoss, SemanticPresenceLoss, SELDMetrics
+    from experiments_nas_seld import NASModel, NASLightningModule
+    from experiments_nas_seld import tPITLoss, SemanticPresenceLoss, SELDMetrics
 
 Author
 ------

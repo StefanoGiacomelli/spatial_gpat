@@ -1,7 +1,7 @@
 """
 NAS Configuration Profiler
 ==========================
-For every config in a target directory (default: ``configs/experiments/**``):
+For every config in a target directory (default: ``configs/experiments_nas-seld/foa/shallow_spec``):
 
   1. Instantiate ``NASModel(cfg)``
   2. Warm-up N_WARMUP forward passes (not timed)
@@ -13,27 +13,29 @@ For every config in a target directory (default: ``configs/experiments/**``):
 
 Metadata (input type, module types, n_layers per stage) is read directly
 from the loaded YAML — not inferred from the filename — so it works for
-both shallow (``exp_spe_rn_tt_bg``) and deep (``exp_e2_l1_s1``) naming schemes.
+both shallow (``exp_spe_rn_tt_bg``) and deep naming schemes.
 
 Results are saved to ``results/nas_configs_profile_{slug}_{timestamp}.csv``.
-The timestamp guarantees no previous CSV is ever overwritten.
+The ``{slug}`` encodes the config sub-group (e.g. ``foa_shallow_spec``,
+``foa_shallow_gab``, ``foa_deep_reg``); the timestamp guarantees no previous
+CSV is ever overwritten.
 
 Usage::
 
-    # default: all shallow configs under configs/experiments/ (recursive)
-    python tests/test_nas_configs.py
+    # default: all shallow_spec configs under configs/experiments_nas-seld/foa/shallow_spec/
+    python tests/test_seld_nas_configs.py
 
-    # deep configs only
-    python tests/test_nas_configs.py --configs-dir configs/experiments_deep/foa/deep_spec
+    # all NAS configs (all sub-groups, recursive)
+    python tests/test_seld_nas_configs.py --configs-dir configs/experiments_nas-seld
 
-    # all experiments_deep groups
-    python tests/test_nas_configs.py --configs-dir configs/experiments_deep
+    # shallow_gab only
+    python tests/test_seld_nas_configs.py --configs-dir configs/experiments_nas-seld/foa/shallow_gab
 
-    # shallow + deep in one run (two separate CSVs, one per root)
-    python tests/test_nas_configs.py --all
+    # deep_reg only
+    python tests/test_seld_nas_configs.py --configs-dir configs/experiments_nas-seld/foa/deep_reg
 
-    # single specific sub-group
-    python tests/test_nas_configs.py --configs-dir configs/experiments/foa/shallow_spec
+    # deep_spec only
+    python tests/test_seld_nas_configs.py --configs-dir configs/experiments_nas-seld/foa/deep_spec
 
 Tune DEVICE / BATCH_SIZE / DURATION_S at the top of this file.
 
@@ -63,7 +65,7 @@ DURATION_S  = 30.0
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 REPO_ROOT       = Path(__file__).resolve().parent.parent
-CONFIGS_ROOT    = REPO_ROOT / 'configs' / 'experiments'
+CONFIGS_ROOT    = REPO_ROOT / 'configs' / 'experiments_nas-seld' / 'foa' / 'shallow_spec'
 RESULTS_DIR     = REPO_ROOT / 'results'
 
 # Add repo root to path so that local packages are importable
@@ -78,18 +80,19 @@ from experiments_nas_seld.nas_model import NASModel  # noqa: E402  (after sys.pa
 def _group_slug(configs_dir: Path) -> str:
     """Derive a readable identifier from the config directory path.
 
-    Computes the path relative to ``configs/experiments/``, replaces ``/``
-    with ``_``, and falls back to the directory name if the path is not
+    Computes the path relative to ``configs/experiments_nas-seld/``, replaces
+    ``/`` with ``_``, and falls back to the directory name if the path is not
     under that root.
 
     Examples
     --------
-    ``configs/experiments/foa/shallow_spec``  →  ``foa_shallow_spec``
-    ``configs/experiments/foa/deep_spec``     →  ``foa_deep_spec``
-    ``configs/experiments``                   →  ``all``
+    ``configs/experiments_nas-seld/foa/shallow_spec``  →  ``foa_shallow_spec``
+    ``configs/experiments_nas-seld/foa/deep_reg``      →  ``foa_deep_reg``
+    ``configs/experiments_nas-seld``                   →  ``all``
     """
+    _nas_seld_root = REPO_ROOT / 'configs' / 'experiments_nas-seld'
     try:
-        rel  = configs_dir.resolve().relative_to(CONFIGS_ROOT.resolve())
+        rel  = configs_dir.resolve().relative_to(_nas_seld_root.resolve())
         slug = str(rel).replace('/', '_').replace('\\', '_')
         return slug if slug else 'all'
     except ValueError:
@@ -281,13 +284,19 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python tests/test_nas_configs.py
-      → all configs under configs/experiments/ (shallow + deep, recursive)
+  python tests/test_seld_nas_configs.py
+      → shallow_spec configs (default: configs/experiments_nas-seld/foa/shallow_spec/)
 
-  python tests/test_nas_configs.py --configs-dir configs/experiments/foa/shallow_spec
-      → shallow_spec group only
+  python tests/test_seld_nas_configs.py --configs-dir configs/experiments_nas-seld
+      → all NAS configs (all sub-groups, recursive)
 
-  python tests/test_nas_configs.py --configs-dir configs/experiments/foa/deep_spec
+  python tests/test_seld_nas_configs.py --configs-dir configs/experiments_nas-seld/foa/shallow_gab
+      → shallow_gab group only
+
+  python tests/test_seld_nas_configs.py --configs-dir configs/experiments_nas-seld/foa/deep_reg
+      → deep_reg group only
+
+  python tests/test_seld_nas_configs.py --configs-dir configs/experiments_nas-seld/foa/deep_spec
       → deep_spec group only
         """,
     )
@@ -295,7 +304,7 @@ Examples:
         '--configs-dir', type=Path, default=None,
         help=(
             'Directory to search for exp_*.yaml configs (recursive). '
-            'Defaults to configs/experiments/ (all groups).'
+            'Defaults to configs/experiments_nas-seld/foa/shallow_spec/.'
         ),
     )
     args = parser.parse_args()

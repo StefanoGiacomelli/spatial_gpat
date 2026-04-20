@@ -1,6 +1,8 @@
 /data/
 /logs/
 /runs/
+# Temporary
+/neural_srp/
 
 *.venv/
 __pycache__/
@@ -16,6 +18,3 @@ __pycache__/
 /gpu_job.sh
 /main.sh
 /setup_venv.sh
-
-# Temporary
-/neural_srp/

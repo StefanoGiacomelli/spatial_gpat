@@ -20,5 +20,5 @@ augmentation:
   noise_snr_db: 35.0
 
 semantic:
-  pretrained_class_map: /Volumes/Lexar/audioset-qiuqiangkong/metadata/class_labels_indices.csv
-  model_class_map:      configs/datasets/audioset_strong_label_map.csv
+  pretrained_class_map:      /Volumes/Lexar/audioset-qiuqiangkong/metadata/class_labels_indices.csv
+  mid_to_display_name_tsv:   /Volumes/Lexar/audioset-qiuqiangkong/metadata/mid_to_display_name.tsv

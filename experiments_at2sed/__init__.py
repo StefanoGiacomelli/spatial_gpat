@@ -9,7 +9,7 @@ Modules
 -------
 AT2SEDModel              (model.py) — E-PANNs → global pool → logits (B, n_cls)
 AT2SEDLightningModule    (train.py) — training/val/test loop with running logging
-SEDMultiLabelLoss        (loss.py)  — BCEWithLogitsLoss withpos_weight per class
+SEDMultiLabelLoss        (loss.py)  — BCEWithLogitsLoss with pos_weight per class
 SEDMultiLabelMetrics     (loss.py)  — mAP, AUROC, F1 macro/micro, Precision, Recall
 
 Usage

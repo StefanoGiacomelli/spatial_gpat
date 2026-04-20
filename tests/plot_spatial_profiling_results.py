@@ -1,23 +1,21 @@
 """
-tests/plot_profiling_results.py
-================================
+tests/plot_spatial_profiling_results.py
+========================================
 Visualization of spatial_modules profiling results.
 
 Reads the most recent (or a specified) CSV from ``results/`` and produces
-5 SVG figures at 600 DPI in ``figures/``:
+3 SVG figures at 600 DPI in ``figures/``:
 
   fig1_violin.svg            Forward-time violin plots by algorithmic family
   fig2_lines.svg             Forward time vs batch size (one panel per device)
   fig3_heatmap.svg           Heatmap: median time | memory | params | GFLOPs
-  fig4_scatter_params.svg    Scatter: params vs speed (marker ∝ params)
-  fig5_scatter_pareto.svg    Scatter: median time vs memory + Pareto front
 
 All style parameters are exposed as constants at the top of this file.
 
 Usage
 -----
-    python tests/plot_profiling_results.py
-    python tests/plot_profiling_results.py --csv results/spatial_modules_profile_<ts>.csv
+    python tests/plot_spatial_profiling_results.py
+    python tests/plot_spatial_profiling_results.py --csv results/spatial_modules_profile_<ts>.csv
 
 Author
 ------

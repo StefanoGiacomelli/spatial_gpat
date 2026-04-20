@@ -18,7 +18,7 @@ giving a natural severity-ranking read.
 
 Output
 ------
-  figures/fig_class_balance.svg   (600 Dpi)
+  figures/seld_class_balance.svg   (600 DPI)
 
 Usage
 -----
@@ -35,6 +35,7 @@ DISIM Department — University of L'Aquila
 
 import argparse
 import csv
+import json
 import sys
 from pathlib import Path
 from typing import Dict, Optional, Tuple
@@ -217,17 +218,27 @@ def _draw_panel(
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Clip/window count helpers (read from CSV active_frames + guess)
+# Clip/window count helpers
 # ══════════════════════════════════════════════════════════════════════════════
 
-# These are the correct values from test_class_balance.py output; stored here
-# so the plot script does not need to re-scan the CSVs for metadata.
-_CLIP_WINDOW_COUNTS: Dict[str, Tuple[int, int]] = {
+# Fallback counts used when the JSON sidecar produced by test_seld_class_balance.py
+# is not present (e.g., on a first run before the sidecar has been generated).
+_CLIP_WINDOW_COUNTS_FALLBACK: Dict[str, Tuple[int, int]] = {
     'STARSS23_train':       (90,  2980),
     'STARSS23_test':        (78,  2316),
     'TAU-NIGENS2021_train': (400, 4800),
     'TAU-NIGENS2021_test':  (100, 1200),
 }
+
+
+def _load_counts(csv_dir: Path, ds: str, split: str) -> Tuple[int, int]:
+    """Return (n_clips, n_windows) from the JSON sidecar if available."""
+    meta_path = csv_dir / f'class_balance_{ds}_{split}_meta.json'
+    if meta_path.exists():
+        with open(meta_path) as fh:
+            meta = json.load(fh)
+        return int(meta['n_clips']), int(meta['n_windows'])
+    return _CLIP_WINDOW_COUNTS_FALLBACK.get(f'{ds}_{split}', (0, 0))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -236,14 +247,10 @@ _CLIP_WINDOW_COUNTS: Dict[str, Tuple[int, int]] = {
 
 # Four panels: (dataset, split, csv_stem, panel_title)
 PANELS = [
-    ('STARSS23',       'train', 'class_balance_STARSS23_train',
-     'STARSS23 — Train  (90 clips)'),
-    ('STARSS23',       'test',  'class_balance_STARSS23_test',
-     'STARSS23 — Test  (78 clips)'),
-    ('TAU-NIGENS2021', 'train', 'class_balance_TAU-NIGENS2021_train',
-     'TAU-NIGENS2021 — Train  (400 clips)'),
-    ('TAU-NIGENS2021', 'test',  'class_balance_TAU-NIGENS2021_test',
-     'TAU-NIGENS2021 — Test  (100 clips)'),
+    ('STARSS23',       'train', 'class_balance_STARSS23_train',       'STARSS23 — Train'),
+    ('STARSS23',       'test',  'class_balance_STARSS23_test',        'STARSS23 — Test'),
+    ('TAU-NIGENS2021', 'train', 'class_balance_TAU-NIGENS2021_train', 'TAU-NIGENS2021 — Train'),
+    ('TAU-NIGENS2021', 'test',  'class_balance_TAU-NIGENS2021_test',  'TAU-NIGENS2021 — Test'),
 ]
 
 
@@ -273,7 +280,8 @@ def build_figure(csv_dir: Path, out_dir: Path) -> Path:
             continue
 
         data = _sort_descending_pw(data)
-        n_clips, n_windows = _CLIP_WINDOW_COUNTS.get(f'{ds}_{split}', (0, 0))
+        n_clips, n_windows = _load_counts(csv_dir, ds, split)
+        panel_title = f'{title}  ({n_clips} clips)' if n_clips > 0 else title
 
         inner_gs = GridSpecFromSubplotSpec(
             1, 2,
@@ -284,7 +292,7 @@ def build_figure(csv_dir: Path, out_dir: Path) -> Path:
         ax_pw = fig.add_subplot(inner_gs[0])
         ax_cv = fig.add_subplot(inner_gs[1], sharey=ax_pw)
 
-        _draw_panel(ax_pw, ax_cv, data, title, n_clips, n_windows)
+        _draw_panel(ax_pw, ax_cv, data, panel_title, n_clips, n_windows)
 
     # ── Super-title ────────────────────────────────────────────────────────────
     fig.suptitle(

@@ -143,8 +143,11 @@ class STARSS23Dataset(SELDDataset):
                     continue
                 p = line.split(',')
                 # cols: frame, class, source_idx, azimuth, elevation, distance
-                events.append((int(p[0]), int(p[1]), int(p[2]),
-                               float(p[3]), float(p[4])))
+                try:
+                    events.append((int(p[0]), int(p[1]), int(p[2]),
+                                   float(p[3]), float(p[4])))
+                except (ValueError, IndexError):
+                    continue   # skip malformed or header rows
                 # distance (p[5]) is not used for ACCDOA targets
         return events
 
@@ -194,7 +197,10 @@ def compute_pos_weights(root: Path, n_classes: int = 13) -> 'torch.Tensor':
                     parts = line.strip().split(',')
                     if len(parts) < 2:
                         continue
-                    key = (csv_p.stem, int(parts[0]))
+                    try:
+                        key = (csv_p.stem, int(parts[0]))
+                    except ValueError:
+                        continue   # skip header or malformed rows
                     if key not in frame_classes:
                         frame_classes[key] = set()
                     frame_classes[key].add(int(parts[1]))

@@ -110,7 +110,7 @@ class SEDMultiLabelLoss(nn.Module):
         """
         Inject or update the positive-class weights after construction.
 
-        Called by ``main_sed_only.py`` once the DataModule has computed
+        Called by ``main_at2sed.py`` once the DataModule has computed
         the training-set statistics.
 
         Args:

@@ -1,6 +1,6 @@
 """
-tests/test_datasets.py
-======================
+tests/test_seld_datasets.py
+============================
 Smoke-test, profiling, and dataset analysis script for STARSS23Dataset and
 TAUNIGENSDataset.
 
@@ -19,26 +19,26 @@ For each dataset and each split (train / val / test) the script can:
 
 Output directories
 ------------------
-    tests/results/   — CSV tables (TABLE 2 per dataset/split/mode)
-    tests/figures/   — SVG figures at 600 DPI (DOA analysis per dataset)
+    results/   — CSV tables (TABLE 2 per dataset/split/mode)
+    figures/   — SVG figures at 600 DPI (DOA analysis per dataset)
 
 Usage
 -----
     # Run everything (smoke tests + analysis)
-    .venv/bin/python tests/test_datasets.py
+    .venv/bin/python tests/test_seld_datasets.py
 
     # Only dataset analysis + figures (fast, no audio loading for native mode)
-    .venv/bin/python tests/test_datasets.py --analysis-only
+    .venv/bin/python tests/test_seld_datasets.py --analysis-only
 
     # Only smoke tests
-    .venv/bin/python tests/test_datasets.py --smoke-only
+    .venv/bin/python tests/test_seld_datasets.py --smoke-only
 
     # Restrict to one dataset
-    .venv/bin/python tests/test_datasets.py --dataset STARSS23 --analysis-only
-    .venv/bin/python tests/test_datasets.py --dataset TAU-NIGENS2021
+    .venv/bin/python tests/test_seld_datasets.py --dataset STARSS23 --analysis-only
+    .venv/bin/python tests/test_seld_datasets.py --dataset TAU-NIGENS2021
 
     # Full-clip mode for smoke tests (no windowing)
-    .venv/bin/python tests/test_datasets.py --smoke-only --no-window
+    .venv/bin/python tests/test_seld_datasets.py --smoke-only --no-window
 
 Author
 ------

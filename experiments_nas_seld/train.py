@@ -68,7 +68,7 @@ from .loss import (
     SELDMetrics,
 )
 
-# Dataset → number of classes mapping (mirrors main_experiments_1.py DATASET_N_CLASSES)
+# Dataset → number of classes mapping (mirrors main.py DATASET_ROOTS)
 _N_CLASSES: Dict[str, int] = {
     'STARSS23':       13,
     'TAU-NIGENS2021': 12,
@@ -187,7 +187,7 @@ class NASLightningModule(L.LightningModule):
     def set_metrics_path(self, path: Path) -> None:
         """Inject JSON metrics log path after construction.
 
-        Called by ``main_experiments_1.py`` so that per-epoch and test metrics
+        Called by ``main.py`` so that per-epoch and test metrics
         are persisted to ``{metrics_dir}/{exp_name}.json``.
 
         Args:
@@ -204,7 +204,7 @@ class NASLightningModule(L.LightningModule):
         batch: Tuple[torch.Tensor, torch.Tensor],
         batch_idx: int,
     ) -> torch.Tensor:
-        """Compute weighted ADPIT + BCE loss for one training batch.
+        """Compute weighted tPIT + BCE loss for one training batch.
 
         Parameters
         ----------
@@ -217,7 +217,7 @@ class NASLightningModule(L.LightningModule):
         Returns
         -------
         torch.Tensor
-            Scalar total loss :math:`L = \\lambda_s L_{\\text{ADPIT}} + \\lambda_e L_{\\text{BCE}}`.
+            Scalar total loss :math:`L = \\lambda_s L_{\\text{tPIT}} + \\lambda_e L_{\\text{BCE}}`.
 
         Logged keys
         -----------

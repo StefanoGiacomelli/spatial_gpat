@@ -136,7 +136,7 @@ class SplitEPANNs(nn.Module):
         pretrained_class_map: str = None,
         model_class_map: str = None,
     ) -> None:
-        state = torch.load(path, map_location='cpu', weights_only=False)
+        state = torch.load(path, map_location='cpu', weights_only=True)
         ckpt_cls = state.get('fc_audioset.weight')
         model_cls_shape = self.backbone.fc_audioset.weight.shape
 

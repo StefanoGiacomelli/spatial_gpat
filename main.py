@@ -41,10 +41,10 @@ Usage
     .venv/bin/python main.py --dataset TAU-NIGENS2021 --exp exp_spe_cb_fe_mg
 
     # Single config file from arbitrary path
-    .venv/bin/python main.py --config-file configs/experiments/exp_spe_cb_fe_bg.yaml
+    .venv/bin/python main.py --config-file configs/experiments_nas-seld/foa/shallow_spec/exp_spe_cb_fe_bg.yaml
 
     # Custom config directory (e.g. for deep NAS configs)
-    .venv/bin/python main.py --config-dir configs/deep_experiments/
+    .venv/bin/python main.py --config-dir configs/experiments_nas-seld/foa/deep_reg/
 
     # List all statuses
     .venv/bin/python main.py --list
@@ -98,7 +98,7 @@ from datasets.datamodule import SELDDataModule     # noqa: E402
 # ══════════════════════════════════════════════════════════════════════════════
 
 SEED             = 42     # global + val_seed for STARSS23 train/val split
-VAL_FRACTION     = 0.2    # STARSS23-only (matches test_datasets.py:145)
+VAL_FRACTION     = 0.2    # STARSS23-only (matches test_seld_datasets.py:145)
 EFFECTIVE_BATCH  = 16     # target effective batch size for gradient accumulation
 
 # Default CLI values
@@ -120,7 +120,7 @@ DATASET_ROOTS = {
 }
 
 # Default config / output directories (may be overridden in main())
-_DEFAULT_CONFIGS_DIR = _ROOT / 'configs' / 'experiments' / 'foa' / 'shallow_spec'
+_DEFAULT_CONFIGS_DIR = _ROOT / 'configs' / 'experiments_nas-seld' / 'foa' / 'shallow_spec'
 _DATASET_CONFIGS_DIR = _ROOT / 'configs' / 'datasets'
 
 # These are reassigned in main() based on --config-dir / --run-dir
@@ -153,7 +153,7 @@ def _parse_args():
     loc.add_argument('--config-dir', type=Path, default=None,
                      metavar='DIR',
                      help='Directory with experiment YAMLs. '
-                          'Default: configs/experiments/')
+                          'Default: configs/experiments_nas-seld/')
     loc.add_argument('--config-file', type=Path, default=None,
                      metavar='PATH',
                      help='Path to a single experiment YAML. '

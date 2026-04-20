@@ -1,6 +1,6 @@
 """
-analyze_nas_foa.py — NAS Phase 1 FOA Shallow Experiments Analysis
-=================================================================
+tests/analyze_shallow_nas_foa.py — NAS Phase 1 FOA Shallow Experiments Analysis
+================================================================================
 Reads metrics JSONs and TensorBoard event files for all 16 shallow-input
 FOA NAS experiments (8 shallow_spec + 8 shallow_gab) and produces:
 
@@ -11,16 +11,16 @@ FOA NAS experiments (8 shallow_spec + 8 shallow_gab) and produces:
   figures/
     shallow_learning_curves_spe.svg   — val/SELD_score per epoch, shallow_spec
     shallow_learning_curves_gab.svg   — val/SELD_score per epoch, shallow_gab
-    shallow_train_loss_curves.png     — train loss components (3×2 panel grid)
+    shallow_train_loss_curves.svg     — train loss components (3×2 panel grid)
     shallow_val_loss_components.svg   — val loss components  (4×2 panel grid)
-    shallow_training_time.png         — training duration bar chart
-    shallow_bar_test_seld.png         — test SELD_score ranking bar chart
-    shallow_ablation_heatmaps.png     — 6× 2×2 marginal-effect heatmaps
-    shallow_multi_metric_heatmap.png  — 16 exp × 8 metrics normalised heatmap
+    shallow_training_time.svg         — training duration bar chart
+    shallow_bar_test_seld.svg         — test SELD_score ranking bar chart
+    shallow_ablation_heatmaps.svg     — 6× 2×2 marginal-effect heatmaps
+    shallow_multi_metric_heatmap.svg  — 16 exp × 8 metrics normalised heatmap
 
 Usage
 -----
-    python tests/analyze_nas_foa.py
+    python tests/analyze_shallow_nas_foa.py
 
 Author
 ------

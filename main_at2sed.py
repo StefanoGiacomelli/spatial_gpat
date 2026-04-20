@@ -18,7 +18,7 @@ Directory layout after a run
 -----------------------------
 ::
 
-    results/at2sed/{exp_name}/
+    runs/at2sed/{exp_name}/
     ├── state.json           ← pending | running | completed
     ├── metrics.json         ← [{epoch: 0, val/map_macro: ...}, ...]
     ├── checkpoints/
@@ -31,19 +31,19 @@ Usage
 ::
 
     # Smoke test (2% batches for 1 epoch)
-    .venv/bin/python main_sed_only.py --epochs 1 --limit-batches 0.02 (or --limit-batches 10 for 10 batches)
+    .venv/bin/python main_at2sed.py --epochs 1 --limit-batches 0.02 (or --limit-batches 10 for 10 batches)
 
     # Default run (window=10s, 30 epochs)
-    .venv/bin/python main_sed_only.py --epochs 30
+    .venv/bin/python main_at2sed.py --epochs 30
 
     # Pseudo-RT window sweep
-    .venv/bin/python main_sed_only.py --window-s 2 --hop-s 2 --epochs 30
+    .venv/bin/python main_at2sed.py --window-s 2 --hop-s 2 --epochs 30
 
     # Force re-run of a completed experiment
-    .venv/bin/python main_sed_only.py --exp at2sed_default --force
+    .venv/bin/python main_at2sed.py --exp at2sed_bce --force
 
     # Print state
-    .venv/bin/python main_sed_only.py --list
+    .venv/bin/python main_at2sed.py --list
 
 Author
 ------
@@ -87,7 +87,7 @@ _RESULTS_ROOT    = _ROOT / 'runs' / 'at2sed'
 _CONFIGS_DIR     = _ROOT / 'configs' / 'experiments_at2sed'
 _DATASET_CFG     = _ROOT / 'configs' / 'datasets' / 'AudioSetStrong.yaml'
 
-_DEFAULT_EXP         = 'at2sed_default'
+_DEFAULT_EXP         = 'at2sed_bce'
 _DEFAULT_EPOCHS      = 30
 _DEFAULT_BATCH_SIZE  = 32
 _DEFAULT_LR          = 1e-3
