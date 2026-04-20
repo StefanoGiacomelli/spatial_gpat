@@ -1,0 +1,4 @@
+cs_code,cs_early,cs_late,delta_SELD_score,improved_SELD_score,delta_LE_CD,improved_LE_CD,delta_ER_20,improved_ER_20,delta_LR_CD,improved_LR_CD,delta_F_20,improved_F_20,delta_sem_accuracy,improved_sem_accuracy,delta_sem_f1,improved_sem_f1,delta_sem_auroc,improved_sem_auroc
+cs01,False,True,-0.083443,True,-2.053328,True,-0.105272,True,0.092370,True,0.124723,True,0.001832,True,-0.006615,False,0.002024,True
+cs10,True,False,0.007288,False,-1.397396,True,0.033703,False,0.000295,True,-0.003508,False,-0.002674,False,-0.037742,False,-0.015592,False
+cs11,True,True,-0.002345,True,-1.360878,True,0.003456,False,0.008011,True,-0.002736,False,-0.005827,False,-0.049107,False,-0.002933,False
