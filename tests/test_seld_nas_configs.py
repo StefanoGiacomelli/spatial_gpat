@@ -70,7 +70,7 @@ RESULTS_DIR     = REPO_ROOT / 'results'
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from experiments.nas_model import NASModel  # noqa: E402  (after sys.path setup)
+from experiments_nas_seld.nas_model import NASModel  # noqa: E402  (after sys.path setup)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
