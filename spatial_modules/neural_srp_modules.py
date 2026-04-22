@@ -311,11 +311,13 @@ class NeuralSRPEncoder(nn.Module):
         n_rnn_layers     : number of stacked GRU layers (default 1)
         fnn_pairwise_size: per-pair MLP output dimension (default 64)
         d_out            : final output embedding dimension (default 128)
-        pair_agg_mode    : how to aggregate across pairs ('mean' | 'sum', default 'mean')
+        pair_agg_mode    : how to aggregate across pairs ('sum' | 'mean', default 'sum')
         metadata_fusion  : where to inject mic-position metadata
                            'early_conv_bias' — add as bias in first conv block
                            'late_concat'     — concatenate before pairwise MLP (default)
         batch_norm_hidden: BatchNorm1d in pairwise MLP (default False)
+        bidirectional    : use dual fwd+bwd GRU stacks with tanh-gated mul merge (default True);
+                           False = single unidirectional GRU with tanh output (original default)
 
     Input:
         x       : (B, n_mics, T_samples)  raw waveform
@@ -331,18 +333,19 @@ class NeuralSRPEncoder(nn.Module):
         win_size:          int   = 512,
         hop_size:          int   = 256,
         tau_max:           int   = 32,
-        n_conv_channels:   int   = 32,
+        n_conv_channels:   int   = 128,
         n_conv_layers:     int   = 3,
         f_pool_size:       list  = None,
         t_pool_size:       list  = None,
         dropout_rate:      float = 0.0,
-        rnn_hidden:        int   = 64,
-        n_rnn_layers:      int   = 1,
-        fnn_pairwise_size: int   = 64,
+        rnn_hidden:        int   = 128,
+        n_rnn_layers:      int   = 2,
+        fnn_pairwise_size: int   = 128,
         d_out:             int   = 128,
-        pair_agg_mode:     str   = 'mean',
+        pair_agg_mode:     str   = 'sum',
         metadata_fusion:   str   = 'late_concat',
         batch_norm_hidden: bool  = False,
+        bidirectional:     bool  = True,
     ) -> None:
         super().__init__()
 
@@ -361,6 +364,7 @@ class NeuralSRPEncoder(nn.Module):
         self.tau_max           = tau_max
         self.pair_agg_mode     = pair_agg_mode
         self.metadata_fusion   = metadata_fusion
+        self.bidirectional     = bidirectional
         self.n_metadata        = 6     # 2 mic positions × 3 coordinates
 
         # ── Signal processing ─────────────────────────────────────────────
@@ -388,25 +392,35 @@ class NeuralSRPEncoder(nn.Module):
             n_freq_after = n_freq_after // max(f_pool_size[i], 1)
         self.conv_blocks = nn.ModuleList(conv_blocks)
 
-        # ── GRU (bidirectional, merge_mode=mul) ───────────────────────────
-        # frequency axis is collapsed via mean in forward → input dim = n_conv_channels
+        # ── GRU ──────────────────────────────────────────────────────────────
+        # frequency axis collapsed via mean → input dim = n_conv_channels
         in_gru = n_conv_channels
-        self.gru_fwd = nn.ModuleList([
-            nn.GRU(
-                input_size  = in_gru if j == 0 else rnn_hidden,
+        if bidirectional:
+            # Dual-stack fwd+bwd with tanh-gated mul merge (each unidirectional)
+            self.gru_fwd = nn.ModuleList([
+                nn.GRU(
+                    input_size  = in_gru if j == 0 else rnn_hidden,
+                    hidden_size = rnn_hidden,
+                    num_layers  = 1,
+                    batch_first = True,
+                ) for j in range(n_rnn_layers)
+            ])
+            self.gru_bwd = nn.ModuleList([
+                nn.GRU(
+                    input_size  = in_gru if j == 0 else rnn_hidden,
+                    hidden_size = rnn_hidden,
+                    num_layers  = 1,
+                    batch_first = True,
+                ) for j in range(n_rnn_layers)
+            ])
+        else:
+            # Single unidirectional GRU (original neural_srp default)
+            self.gru = nn.GRU(
+                input_size  = in_gru,
                 hidden_size = rnn_hidden,
-                num_layers  = 1,
+                num_layers  = n_rnn_layers,
                 batch_first = True,
-            ) for j in range(n_rnn_layers)
-        ])
-        self.gru_bwd = nn.ModuleList([
-            nn.GRU(
-                input_size  = in_gru if j == 0 else rnn_hidden,
-                hidden_size = rnn_hidden,
-                num_layers  = 1,
-                batch_first = True,
-            ) for j in range(n_rnn_layers)
-        ])
+            )
 
         # ── Pairwise MLP (per pair) ───────────────────────────────────────
         fnn_in = rnn_hidden + (self.n_metadata if metadata_fusion == 'late_concat' else 0)
@@ -464,13 +478,16 @@ class NeuralSRPEncoder(nn.Module):
         feat = feat.mean(dim=-1)               # (B×n_pairs, C, T')
         feat = feat.permute(0, 2, 1)           # (B×n_pairs, T', C)
 
-        # Bidirectional GRU with mul merge (tanh activation)
-        h = feat
-        for fwd, bwd in zip(self.gru_fwd, self.gru_bwd):
-            fwd_out, _ = fwd(h)
-            bwd_out, _ = bwd(h.flip(1))
-            bwd_out    = bwd_out.flip(1)
-            h          = torch.tanh(fwd_out) * torch.tanh(bwd_out)
+        # GRU with tanh activation
+        if self.bidirectional:
+            h = feat
+            for fwd, bwd in zip(self.gru_fwd, self.gru_bwd):
+                fwd_out, _ = fwd(h)
+                bwd_out, _ = bwd(h.flip(1))
+                h = torch.tanh(fwd_out) * torch.tanh(bwd_out.flip(1))
+        else:
+            h, _ = self.gru(feat)
+            h = torch.tanh(h)
 
         # Late metadata concat
         if self.metadata_fusion == 'late_concat':
@@ -489,3 +506,54 @@ class NeuralSRPEncoder(nn.Module):
             h = h.sum(dim=1)
 
         return self.fnn_out(h)                 # (B, T', d_out)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SpatialSRPModel — encoder + three prediction heads
+# ─────────────────────────────────────────────────────────────────────────────
+
+class SpatialSRPModel(nn.Module):
+    """
+    Standalone spatial SELD model built on top of NeuralSRPEncoder.
+
+    Three heads are applied to the framewise encoder embedding:
+        DOA      : Linear → Tanh   → (B, T, N_tracks, 3)  Cartesian unit vectors
+        Activity : Linear          → (B, T, N_tracks)      logits for BCE
+        Distance : Linear → Softplus → (B, T, N_tracks)   positive-valued cm
+
+    Args:
+        encoder_cfg : dict of NeuralSRPEncoder constructor kwargs
+        n_tracks    : number of simultaneous source tracks (default 2)
+
+    Input:
+        wav     : (B, n_mics, T_samples)
+        mic_pos : (B, n_mics, 3)  mic positions in metres
+
+    Output dict:
+        "doa"      : (B, T, N_tracks, 3)
+        "activity" : (B, T, N_tracks)   raw logits
+        "distance" : (B, T, N_tracks)   cm, ≥ 0
+    """
+
+    def __init__(self, encoder_cfg: dict, n_tracks: int = 2) -> None:
+        super().__init__()
+        self.encoder  = NeuralSRPEncoder(**encoder_cfg)
+        d             = encoder_cfg.get('d_out', 128)
+        self.n_tracks = n_tracks
+
+        self.doa_head  = nn.Sequential(nn.Linear(d, n_tracks * 3), nn.Tanh())
+        self.act_head  = nn.Linear(d, n_tracks)
+        self.dist_head = nn.Sequential(nn.Linear(d, n_tracks), nn.Softplus())
+
+    def forward(self,
+                wav:     torch.Tensor,
+                mic_pos: torch.Tensor) -> dict:
+        h   = self.encoder(wav, mic_pos)               # (B, T, d)
+        B, T, _ = h.shape
+        N   = self.n_tracks
+
+        doa  = self.doa_head(h).view(B, T, N, 3)       # (B, T, N, 3)
+        act  = self.act_head(h)                        # (B, T, N)
+        dist = self.dist_head(h)                       # (B, T, N)
+
+        return {"doa": doa, "activity": act, "distance": dist}

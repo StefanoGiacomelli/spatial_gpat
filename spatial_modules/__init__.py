@@ -47,6 +47,12 @@ from .raw_waveform_modules import (
     FormantEnhancementModule,
 )
 
+# ── Neural-SRP encoder + spatial model ───────────────────────────────────────
+from .neural_srp_modules import NeuralSRPEncoder, SpatialSRPModel
+
+# ── HNet (Hungarian network for soft source assignment) ───────────────────────
+from .hnet_modules import HNetGRU
+
 __all__ = [
     # Adapters
     "CrossStitchBridge",
@@ -62,4 +68,8 @@ __all__ = [
     # Raw-waveform
     "LearnableGaborFilterBank", "GaborFrontEnd",
     "FormantEnhancementModule",
+    # Neural-SRP
+    "NeuralSRPEncoder", "SpatialSRPModel",
+    # HNet
+    "HNetGRU",
 ]
