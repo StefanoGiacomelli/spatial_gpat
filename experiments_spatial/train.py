@@ -24,6 +24,11 @@ from experiments_spatial.loss    import SpatialPITLoss, SpatialHNetLoss
 from experiments_spatial.metrics import SpatialMetrics
 
 
+def _infer_mode(metric: str) -> str:
+    """Infer checkpoint/early-stopping mode from metric name."""
+    return 'min' if any(k in metric for k in ('loss', 'error', '_deg', 'mae')) else 'max'
+
+
 class SpatialLightningModule(L.LightningModule):
     """
     Args:

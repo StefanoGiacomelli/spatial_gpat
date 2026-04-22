@@ -71,7 +71,7 @@ warnings.filterwarnings('ignore', message='.*elements was resized.*')
 import torch
 import yaml
 import lightning as L
-from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from lightning.pytorch.loggers   import TensorBoardLogger
 
 # ── Project path setup ────────────────────────────────────────────────────────
@@ -80,6 +80,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from experiments_spatial           import SpatialLightningModule    # noqa: E402
+from experiments_spatial.train     import _infer_mode               # noqa: E402
 from datasets.spatial_datamodule   import SpatialDataModule         # noqa: E402
 
 
@@ -299,21 +300,30 @@ def _run_experiment(
         except Exception as exc:
             print(f'  [WARN] Could not restore metrics log: {exc}')
 
-    # 6. Checkpoint callback ──────────────────────────────────────────────────
+    # 6. Checkpoint + EarlyStopping callbacks ─────────────────────────────────
     t_cfg        = cfg.get('training', {})
     ckpt_monitor = str(t_cfg.get('checkpoint_monitor', 'val_lf'))
     if ckpt_monitor.startswith('val/'):
         ckpt_monitor = 'val_' + ckpt_monitor[4:]
 
+    mode     = str(t_cfg.get('checkpoint_monitor_mode', _infer_mode(ckpt_monitor)))
+    patience = int(t_cfg.get('early_stopping_patience', 15))
+
     best_cb = ModelCheckpoint(
         dirpath                 = str(ckpt_dir),
         filename                = '{epoch:02d}_{' + ckpt_monitor + ':.4f}',
         monitor                 = ckpt_monitor,
-        mode                    = 'max',
+        mode                    = mode,
         save_top_k              = 1,
         save_last               = True,
         verbose                 = True,
         auto_insert_metric_name = False,
+    )
+    early_cb = EarlyStopping(
+        monitor  = ckpt_monitor,
+        mode     = mode,
+        patience = patience,
+        verbose  = True,
     )
 
     # 7. Device ───────────────────────────────────────────────────────────────
@@ -342,7 +352,7 @@ def _run_experiment(
 
     trainer_kwargs = dict(
         max_epochs              = epochs,
-        callbacks               = [best_cb],
+        callbacks               = [best_cb, early_cb],
         accelerator             = accel,
         devices                 = devices,
         gradient_clip_val       = 1.0,

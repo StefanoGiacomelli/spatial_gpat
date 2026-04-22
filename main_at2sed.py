@@ -92,8 +92,8 @@ _DEFAULT_EPOCHS      = 30
 _DEFAULT_BATCH_SIZE  = 32
 _DEFAULT_LR          = 1e-3
 _DEFAULT_NUM_WORKERS = 4
-_DEFAULT_WINDOW_S    = 0.5
-_DEFAULT_HOP_S       = 0.5  # hop between windows (no overlap by default)
+_DEFAULT_WINDOW_S    = 0.5   # fallback if neither CLI nor YAML specifies window
+_DEFAULT_HOP_S       = None  # fallback: equal to window_s (no overlap)
 EFFECTIVE_BATCH      = 16   # target for gradient accumulation
 
 
@@ -111,10 +111,10 @@ def _parse_args():
 
     p.add_argument('--exp', type=str, default=_DEFAULT_EXP,
                    help='Experiment YAML stem (from configs/experiments_at2sed/).')
-    p.add_argument('--window-s',    type=float, default=_DEFAULT_WINDOW_S,
-                   help='Window duration in seconds.')
-    p.add_argument('--hop-s',       type=float, default=_DEFAULT_HOP_S,
-                   help='Window hop in seconds.')
+    p.add_argument('--window-s',    type=float, default=None,
+                   help='Window duration in seconds (overrides YAML data.window_s).')
+    p.add_argument('--hop-s',       type=float, default=None,
+                   help='Window hop in seconds (overrides YAML data.hop_s).')
     p.add_argument('--lr',          type=float, default=_DEFAULT_LR,
                    help='Adam learning rate.')
     p.add_argument('--epochs',      type=int,   default=_DEFAULT_EPOCHS,
@@ -218,12 +218,17 @@ def _build_cfg(exp_yaml: Path, args) -> dict:
                 if resolved.exists():
                     cfg[section][key] = str(resolved)
 
-    # 3. CLI overrides (always win)
-    cfg.setdefault('data', {}).update({
-        'window_s':    args.window_s,
-        'hop_s':       args.hop_s,
-        'num_workers': args.num_workers,
-    })
+    # 3. CLI overrides (win when explicitly passed; YAML values respected otherwise)
+    data = cfg.setdefault('data', {})
+    if args.window_s is not None:
+        data['window_s'] = args.window_s
+    elif 'window_s' not in data:
+        data['window_s'] = _DEFAULT_WINDOW_S     # fallback: 0.5 s
+    if args.hop_s is not None:
+        data['hop_s'] = args.hop_s
+    elif 'hop_s' not in data:
+        data['hop_s'] = data['window_s']         # fallback: non-overlapping
+    data['num_workers'] = args.num_workers
     cfg.setdefault('training', {}).update({
         'lr':         args.lr,
         'epochs':     args.epochs,
