@@ -417,7 +417,7 @@ def main() -> None:
         fontsize=13, fontweight='bold',
     )
 
-    out = _PROJECT_ROOT / 'figures' / 'plot_mixed_seld_dataset.svg'
+    out = _PROJECT_ROOT / 'figures' / 'mixed_seld_dataset.svg'
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(str(out), dpi=600, bbox_inches='tight', format='svg')
     print(f'\nFigure saved → {out}')

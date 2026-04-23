@@ -111,13 +111,13 @@ SEED             = 42
 VAL_FRACTION     = 0.2
 EFFECTIVE_BATCH  = 16
 
-_DEFAULT_EPOCHS      = 50
+_DEFAULT_EPOCHS      = 100
 _DEFAULT_BATCH_SIZE  = 1
 _DEFAULT_LR          = 5e-4
 _DEFAULT_PATIENCE    = 20
 _DEFAULT_NUM_WORKERS = 4
 _DEFAULT_WINDOW_S    = 10.0   # 0 = full-clip mode
-_DEFAULT_HOP_S       =  5.0
+_DEFAULT_HOP_S       =  5.0   # 0 = non-overlapping windows; ignored in full-clip mode
 
 # Dataset root paths (both used simultaneously in FinetuneDataModule)
 STARSS23_ROOT = _ROOT / 'data' / 'STARSS23'
@@ -257,7 +257,7 @@ def _build_finetune_cfg(exp_yaml_path: Path, args) -> dict:
         'batch_size':      args.batch_size,
         'lambda_spatial':  0.9,
         'lambda_semantic': 0.1,
-        'beta_sed':        0.6,
+        'beta_sed':        0.7,
         'angle_thresh':    20.0,
     }
     # YAML training section overrides defaults (focal_gamma, pos_weight_max, …)

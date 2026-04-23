@@ -414,7 +414,7 @@ def main() -> None:
 
     for rd in regime_data:
         label     = rd['label']
-        file_stem = 'plot_hlp_audioset_strong_' + label.replace(' ', '').replace('.', 'p')
+        file_stem = 'hlp_audioset_strong_' + label.replace(' ', '').replace('.', 'p')
 
         fig, axes = plt.subplots(
             3, 1,

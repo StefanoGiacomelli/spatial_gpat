@@ -86,10 +86,10 @@ from datasets.audioset_strong import AudioSetStrongDataModule   # noqa: E402
 _RESULTS_ROOT    = _ROOT / 'runs' / 'at2sed'
 _CONFIGS_DIR     = _ROOT / 'configs' / 'experiments_at2sed'
 _DATASET_CFG     = _ROOT / 'configs' / 'datasets' / 'AudioSetStrong.yaml'
-
 _DEFAULT_EXP         = 'at2sed_bce'
-_DEFAULT_EPOCHS      = 30
-_DEFAULT_BATCH_SIZE  = 32
+
+_DEFAULT_EPOCHS      = 1000
+_DEFAULT_BATCH_SIZE  = 4
 _DEFAULT_LR          = 1e-3
 _DEFAULT_NUM_WORKERS = 4
 _DEFAULT_WINDOW_S    = 0.5   # fallback if neither CLI nor YAML specifies window
