@@ -67,7 +67,7 @@ warnings.filterwarnings('ignore', message='.*elements was resized.*')
 import torch
 import yaml
 import lightning as L
-from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping
 from lightning.pytorch.loggers import TensorBoardLogger
 
 # ── Project path setup ────────────────────────────────────────────────────────
@@ -89,12 +89,13 @@ _DATASET_CFG     = _ROOT / 'configs' / 'datasets' / 'AudioSetStrong.yaml'
 _DEFAULT_EXP         = 'at2sed_bce'
 
 _DEFAULT_EPOCHS      = 1000
-_DEFAULT_BATCH_SIZE  = 4
+_DEFAULT_BATCH_SIZE  = 32
 _DEFAULT_LR          = 1e-3
 _DEFAULT_NUM_WORKERS = 4
 _DEFAULT_WINDOW_S    = 0.5   # fallback if neither CLI nor YAML specifies window
 _DEFAULT_HOP_S       = None  # fallback: equal to window_s (no overlap)
-EFFECTIVE_BATCH      = 16   # target for gradient accumulation
+EFFECTIVE_BATCH      = 32   # target for gradient accumulation
+EARLY_STOPPING_PATIENCE = 100  # epochs without improvement before stopping
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -358,15 +359,24 @@ def _run_experiment(
     if ckpt_monitor.startswith('val/'):
         ckpt_monitor = 'val_' + ckpt_monitor[4:]
 
+    ckpt_mode = 'min' if any(k in ckpt_monitor for k in ('loss', 'error', '_deg', 'mae')) else 'max'
+
     best_cb = ModelCheckpoint(
         dirpath                 = str(ckpt_dir),
         filename                = '{epoch:02d}_{' + ckpt_monitor + ':.4f}',
         monitor                 = ckpt_monitor,
-        mode                    = 'max',
+        mode                    = ckpt_mode,
         save_top_k              = 1,
         save_last               = True,
         verbose                 = True,
         auto_insert_metric_name = False,
+    )
+
+    early_cb = EarlyStopping(
+        monitor  = ckpt_monitor,
+        mode     = ckpt_mode,
+        patience = EARLY_STOPPING_PATIENCE,
+        verbose  = True,
     )
 
     # 7. Device ───────────────────────────────────────────────────────────────
@@ -398,7 +408,7 @@ def _run_experiment(
 
     trainer_kwargs = dict(
         max_epochs              = args.epochs,
-        callbacks               = [best_cb],
+        callbacks               = [best_cb, early_cb],
         accelerator             = accel,
         devices                 = devices,
         gradient_clip_val       = 1.0,
