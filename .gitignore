@@ -11,8 +11,7 @@ __pycache__/
 .AppleDouble
 .LSOverride
 
-/setup_torch_venv.sh
-/clean_pip_cache.sh
-/gpu_job.sh
-/main.sh
-/setup_venv.sh
+.env
+wandb/
+*.out
+*.sh

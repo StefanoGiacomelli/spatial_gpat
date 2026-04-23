@@ -8,4 +8,5 @@ pyyaml
 matplotlib
 #lightning
 tensorboard
+python-dotenv
 #torchinfo
