@@ -1,0 +1,5 @@
+config_group,config_name,input_type,spatial_early,early_layers,spatial_late,late_layers,smoother,smooth_layers,total_params,trainable_params,memory_mb,gflops,t_ms,out_act_shape,out_doa_shape,out_semantic_shape,status
+foa_deep_reg,exp_r3_t1_cs00,spectral,resnet_block,3,track_transformer,1,bigru,1,29999020,28915564,114.49,755.819,3720.9,"(1, 3001, 2, 13)","(1, 3001, 2, 13, 3)","(1, 93, 13)",OK
+foa_deep_reg,exp_r3_t1_cs01,spectral,resnet_block,3,track_transformer,1,bigru,1,30462380,29378924,116.27,756.430,3755.5,"(1, 3001, 2, 13)","(1, 3001, 2, 13, 3)","(1, 93, 13)",OK
+foa_deep_reg,exp_r3_t1_cs10,spectral,resnet_block,3,track_transformer,1,bigru,1,30062124,28978668,114.74,766.588,4069.4,"(1, 3001, 2, 13)","(1, 3001, 2, 13, 3)","(1, 93, 13)",OK
+foa_deep_reg,exp_r3_t1_cs11,spectral,resnet_block,3,track_transformer,1,bigru,1,30525484,29442028,116.51,767.200,4889.0,"(1, 3001, 2, 13)","(1, 3001, 2, 13, 3)","(1, 93, 13)",OK

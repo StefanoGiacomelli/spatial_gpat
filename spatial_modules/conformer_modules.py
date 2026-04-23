@@ -120,9 +120,30 @@ class MultiScaleChannelAttention(nn.Module):
             nn.BatchNorm2d(n_channels),
         )
 
+    def train(self, mode: bool = True):
+        super().train(mode)
+        # global_path always receives (B, C, 1, 1) — one spatial location.
+        # BatchNorm2d cannot compute meaningful batch statistics over a single
+        # value, and crashes with B=1. Keep global_path's BN layers in eval
+        # mode so they always use running stats (accumulated during training
+        # when B>1, or the initialisation defaults when B=1 from the start).
+        for m in self.global_path.modules():
+            if isinstance(m, nn.BatchNorm2d):
+                m.eval()
+        return self
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Global context: collapse T and F, pass through bottleneck
         g = x.mean(dim=(2, 3), keepdim=True)   # (B, C, 1, 1)
+
+        # global_path always receives a (B, C, 1, 1) tensor — one spatial value
+        # per channel. BatchNorm2d in training mode requires >1 value to compute
+        # variance and crashes with B=1. Force eval mode unconditionally here;
+        # running stats (mean=0, var=1 or checkpoint values) are always valid.
+        for _m in self.global_path.modules():
+            if isinstance(_m, torch.nn.BatchNorm2d):
+                _m.eval()
+
         G = self.global_path(g)                 # (B, C, 1, 1) — broadcasts with L below
 
         # Local context: per-location bottleneck
@@ -159,6 +180,9 @@ class ResNetBlock(nn.Module):
         stride         (tuple[int]):    (time_stride, freq_stride). Default (1,1).
         use_msca       (bool):          Insert MSCA before residual add. Default False.
         msca_reduction (int):           MSCA reduction ratio. Default 4.
+        dropout        (float):         Dropout2d rate applied after the final ReLU.
+                                        Drops entire feature-map channels (appropriate
+                                        for 4-D spatial tensors). Default 0.0 (off).
 
     Input:  (B, in_channels,  T,  F)
     Output: (B, out_channels, T', F')   T',F' depend on stride
@@ -171,6 +195,7 @@ class ResNetBlock(nn.Module):
         stride:         Tuple[int, int] = (1, 1),
         use_msca:       bool            = False,
         msca_reduction: int             = 4,
+        dropout:        float           = 0.0,
     ):
         super().__init__()
 
@@ -183,6 +208,7 @@ class ResNetBlock(nn.Module):
 
         self.msca  = (MultiScaleChannelAttention(out_channels, msca_reduction)
                       if use_msca else None)
+        self.drop  = nn.Dropout2d(dropout) if dropout > 0.0 else None
 
         # Projection shortcut when shapes change
         needs_proj = (in_channels != out_channels) or (stride != (1, 1))
@@ -202,8 +228,10 @@ class ResNetBlock(nn.Module):
         if self.msca is not None:
             out = self.msca(out)
 
-        out = out + self.shortcut(x)
-        return F.relu(out, inplace=True)
+        out = F.relu(out + self.shortcut(x), inplace=True)
+        if self.drop is not None:
+            out = self.drop(out)
+        return out
 
 
 # ============================================================
