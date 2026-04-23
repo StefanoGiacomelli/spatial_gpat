@@ -1,0 +1,70 @@
+# SpatialSRPModel — HNET loss, window 0.5s @ 32 kHz (EPANNs-aligned)
+# ===========================================================================
+# Architecture identical to srp_hnet.yaml; SR set to 32 kHz to match the
+# EPANNs semantic backbone.  Window sweep for temporal receptive field study.
+#
+# Run with:
+#   python main_spatial.py --config-file configs/experiments_spatial/mic/srp_hnet_0p5s.yaml
+
+experiment:
+  name: srp_hnet_0p5s
+  seed: 42
+
+# ── Encoder (32 kHz) ─────────────────────────────────────────────────────────
+encoder:
+  n_mics:            4
+  win_size:          640       # 20 ms at 32 kHz
+  hop_size:          320       # 10 ms — 100 Hz frame rate
+  tau_max:           43        # same max lag time as tau_max=32 @ 24 kHz
+  n_conv_channels:   128
+  n_conv_layers:     3
+  f_pool_size:       [2, 2, 2]
+  t_pool_size:       [1, 1, 1]
+  dropout_rate:      0.1
+  rnn_hidden:        128
+  n_rnn_layers:      2
+  fnn_pairwise_size: 128
+  d_out:             256
+  pair_agg_mode:     sum
+  metadata_fusion:   late_concat
+  bidirectional:     true
+
+  mic_positions:
+    - [ 0.0,    0.0,   0.042]
+    - [ 0.042,  0.0,   0.0  ]
+    - [ 0.0,    0.042, 0.0  ]
+    - [-0.042,  0.0,   0.0  ]
+
+# ── Heads ─────────────────────────────────────────────────────────────────────
+heads:
+  n_tracks: 2
+
+# ── Data ─────────────────────────────────────────────────────────────────────
+data:
+  root:         /path/to/STARSS23    # REPLACE with actual dataset path
+  sr:           32000                # EPANNs SR — STARSS23 resampled from 24 kHz
+  hop_length:   320                  # must equal encoder.hop_size
+  window_s:     0.5                # input window duration in seconds
+  hop_s:        0.25               # 50% overlap
+  num_workers:  4
+  val_fraction: 0.2
+  val_seed:     42
+
+# ── Training ─────────────────────────────────────────────────────────────────
+training:
+  lr:           1.0e-4
+  epochs:       100
+  batch_size:   4
+
+  loss_type:    hnet
+  hnet_ckpt:    spatial_modules/pretrained/hnet_model.h5
+
+  dMOTP_wt:    1.0
+  dMOTA_wt:    1.0
+  IDS_wt:      1.0
+  lambda_act:  1.0
+  lambda_doa:  1.0
+  lambda_dist: 0.5
+
+  checkpoint_monitor:       val_lf    # mode auto-inferred as 'max'
+  early_stopping_patience:  15

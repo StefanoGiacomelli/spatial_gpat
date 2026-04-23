@@ -1,0 +1,55 @@
+# deep_reg — early=3 ResBlock | late=1x TrackTransformer | smooth=1 BiGRU
+# CrossStitch early=false  late=true
+# Regularization: spatial_early.dropout=0.4, spatial_late.dropout=0.3, bigru.dropout=0.3
+
+experiment:
+  name: exp_r3_t1_cs01
+  seed: 42
+
+input:
+  type: spectral
+  sr: 32000
+  n_mics: 4
+  hop_length: 320
+  n_fft: 512
+
+semantic:
+  checkpoint: semantic_backbone/epanns/checkpoint_closeto_.44.pt
+  early_group: {init: pretrained, frozen: false}
+  late_group:  {init: pretrained, frozen: false}
+  head_group:  {init: pretrained, frozen: false}
+
+cross_stitch:
+  cs_early_enabled: false
+  cs_late_enabled:  true
+  C_bridge_early: 64
+  C_bridge_late: 128
+
+spatial_early:
+  type: resnet_block
+  n_layers: 3
+  out_channels: 64
+  use_msca: true
+  msca_reduction: 4
+  stride: [1, 1]
+  dropout: 0.4
+
+spatial_late:
+  type: track_transformer
+  n_layers: 1
+  d_model: 128
+  n_heads: 4
+  n_tracks: 2
+  dropout: 0.3
+
+track_smoothing_spatial:
+  type: bigru
+  n_layers: 1
+  hidden_size: 256
+  dropout: 0.3
+
+heads:
+  n_tracks: 2
+
+data:
+  format: foa
