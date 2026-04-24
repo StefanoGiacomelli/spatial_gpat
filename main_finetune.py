@@ -84,6 +84,7 @@ import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+from dotenv import load_dotenv
 
 warnings.filterwarnings('ignore', message='.*LeafSpec.*deprecated.*')
 warnings.filterwarnings('ignore', message='.*elements was resized.*')
@@ -93,7 +94,7 @@ import torch
 import yaml
 import lightning as L
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
-from lightning.pytorch.loggers import TensorBoardLogger
+from lightning.pytorch.loggers import TensorBoardLogger, WandbLogger
 
 # ── Project path setup ────────────────────────────────────────────────────────
 _ROOT = Path(__file__).resolve().parent
@@ -409,10 +410,16 @@ def _run_experiment(
           + ('  [no accumulation]' if accum == 1 else ''))
 
     # 7. Logger + Trainer ─────────────────────────────────────────────────────
-    logger = TensorBoardLogger(
+    tb_logger = TensorBoardLogger(
         save_dir = str(CKPT_DIR),
         name     = exp_name,
         version  = 0,
+    )
+
+    wb_logger = WandbLogger(
+        project  = 'spatial-gpat',
+        name     = exp_name,
+        config   = cfg,
     )
 
     trainer_kwargs = dict(
@@ -423,7 +430,7 @@ def _run_experiment(
         gradient_clip_val       = 1.0,
         accumulate_grad_batches = accum,
         log_every_n_steps       = 5,
-        logger                  = logger,
+        logger                  = [tb_logger, wb_logger],
         num_sanity_val_steps    = 0,
     )
     if args.limit_batches > 0:
@@ -539,4 +546,5 @@ def main() -> None:
 
 
 if __name__ == '__main__':
+    load_dotenv()
     main()
