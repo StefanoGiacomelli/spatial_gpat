@@ -1,18 +1,25 @@
 #!/usr/bin/env python3
 """
-main_at2sed.py — SED Fine-tuning on AudioSet-Strong
-===========================================================
-Trains ``AT2SEDLightningModule`` on AudioSet-Strong balanced+strong clips.
+main_at2sed.py — AT2SED Fine-tuning (AudioSet-Strong & STARSS23)
+=================================================================
+Trains ``AT2SEDLightningModule`` on AudioSet-Strong or STARSS23.
 Designed to measure classification quality as a function of input window
 duration, in preparation for pseudo-real-time inference.
 
 Features
 --------
-  * Configurable window duration (``--window-s``) and hop (``--hop-s``)
-  * Resumable: interrupted runs continue from ``last.ckpt``; best model kept
+  * ``--config-dir DIR``  : run all *.yaml configs in DIR
+  * ``--config-file PATH``: run a single experiment from an explicit path
+  * ``--exp NAME [...]``  : experiment name(s); filter when using --config-dir;
+                            stem in default configs dir otherwise
+  * ``--list``            : print status table and exit
+  * ``--force``           : re-run completed experiments
+  * HLP superscript       : ``experiment.hlp_enabled`` overrides ``data.hlp_enabled``
+  * Dataset selector      : ``experiment.dataset: starss23`` uses STARSS23SEDDataModule
+  * Resumable             : interrupted runs continue from ``last.ckpt``
   * Atomic state JSON and metrics JSON (write tmp → rename)
   * TensorBoard launched automatically; killed on exit
-  * ``--limit-batches`` for smoke tests (status stays ``running`` → auto-resume)
+  * ``--limit-batches``   : smoke tests (status stays ``running`` → auto-resume)
 
 Directory layout after a run
 -----------------------------
@@ -30,20 +37,28 @@ Usage
 -----
 ::
 
-    # Smoke test (2% batches for 1 epoch)
-    .venv/bin/python main_at2sed.py --epochs 1 --limit-batches 0.02 (or --limit-batches 10 for 10 batches)
+    # Smoke test — default experiment
+    .venv/bin/python main_at2sed.py --epochs 1 --limit-batches 4
 
-    # Default run (window=10s, 30 epochs)
-    .venv/bin/python main_at2sed.py --epochs 30
+    # Single named experiment from default config dir
+    .venv/bin/python main_at2sed.py --exp at2sed_bce_10s --epochs 30
 
-    # Pseudo-RT window sweep
-    .venv/bin/python main_at2sed.py --window-s 2 --hop-s 2 --epochs 30
+    # Batch: all configs in a directory
+    .venv/bin/python main_at2sed.py --config-dir configs/experiments_at2sed
 
-    # Force re-run of a completed experiment
-    .venv/bin/python main_at2sed.py --exp at2sed_bce --force
+    # Batch with name filter
+    .venv/bin/python main_at2sed.py --config-dir configs/experiments_at2sed \
+        --exp at2sed_bce_10s_hlp at2sed_bce_10s_nohlp
 
-    # Print state
+    # Single explicit config file
+    .venv/bin/python main_at2sed.py \
+        --config-file configs/experiments_at2sed/at2sed_bce_10s_starss23.yaml
+
+    # Print status table
     .venv/bin/python main_at2sed.py --list
+
+    # Force re-run of completed experiments
+    .venv/bin/python main_at2sed.py --config-dir configs/experiments_at2sed --force
 
 Author
 ------
@@ -59,7 +74,7 @@ import sys
 import warnings
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional, Tuple
 
 warnings.filterwarnings('ignore', message='.*No positive samples.*')
 warnings.filterwarnings('ignore', message='.*elements was resized.*')
@@ -77,6 +92,7 @@ if str(_ROOT) not in sys.path:
 
 from experiments_at2sed import AT2SEDLightningModule   # noqa: E402
 from datasets.audioset_strong import AudioSetStrongDataModule   # noqa: E402
+from datasets.starss23_sed_datamodule import STARSS23SEDDataModule   # noqa: E402
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -106,12 +122,23 @@ def _parse_args():
     import argparse
 
     p = argparse.ArgumentParser(
-        description='SED-only fine-tuning on AudioSet-Strong.',
+        description='AT2SED fine-tuning on AudioSet-Strong or STARSS23.',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
-    p.add_argument('--exp', type=str, default=_DEFAULT_EXP,
-                   help='Experiment YAML stem (from configs/experiments_at2sed/).')
+    # ── Experiment source (mutually exclusive) ────────────────────────────────
+    src = p.add_mutually_exclusive_group()
+    src.add_argument('--config-dir', type=Path, default=None, metavar='DIR',
+                     help='Run all *.yaml configs in DIR.')
+    src.add_argument('--config-file', type=Path, default=None, metavar='PATH',
+                     help='Run single experiment from explicit YAML path.')
+
+    # ── Experiment name / filter ──────────────────────────────────────────────
+    p.add_argument('--exp', type=str, nargs='*', default=None, metavar='NAME',
+                   help='Experiment name(s). Alone: stem in default configs dir. '
+                        'With --config-dir: filter subset to run.')
+
+    # ── Training overrides ────────────────────────────────────────────────────
     p.add_argument('--window-s',    type=float, default=None,
                    help='Window duration in seconds (overrides YAML data.window_s).')
     p.add_argument('--hop-s',       type=float, default=None,
@@ -124,16 +151,15 @@ def _parse_args():
                    help='Batch size per step.')
     p.add_argument('--num-workers', type=int,   default=_DEFAULT_NUM_WORKERS,
                    help='DataLoader worker processes.')
-    p.add_argument('--device',      type=str,   default=None,
-                   metavar='ACCEL',
+    p.add_argument('--device',      type=str,   default=None, metavar='ACCEL',
                    help='Force accelerator: cuda | mps | cpu. Default: auto-detect.')
     p.add_argument('--force',       action='store_true',
-                   help='Re-run experiment even if already completed.')
+                   help='Re-run experiments even if already completed.')
     p.add_argument('--limit-batches', type=float, default=0.0,
                    help='Fraction (0,1] or number of batches per epoch/phase '
                         'for smoke tests (0 = disabled). Status stays running → auto-resume.')
     p.add_argument('--list',        action='store_true',
-                   help='Print experiment status and exit.')
+                   help='Print experiment status table and exit.')
 
     return p.parse_args()
 
@@ -181,7 +207,59 @@ def _print_state(exp_name: str, exp_dir: Path) -> None:
         )
     elif status == 'running':
         info = f"interrupted {state.get('started_at', '')}"
-    print(f'{exp_name:<36}  {status:<12}  {info}')
+    print(f'{exp_name:<40}  {status:<12}  {info}')
+
+
+def _print_state_table(experiments: List[Tuple[str, Optional[Path]]]) -> None:
+    print(f'\n{"Experiment":<40}  {"Status":<12}  Info')
+    print('-' * 80)
+    for exp_name, _ in experiments:
+        _print_state(exp_name, _RESULTS_ROOT / exp_name)
+    print()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Experiment resolution
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _resolve_experiments(args) -> List[Tuple[str, Path]]:
+    """
+    Returns list of (exp_name, yaml_path) pairs based on CLI flags.
+
+    Priority:
+        --config-dir  → all *.yaml in DIR, optionally filtered by --exp
+        --config-file → single explicit YAML
+        --exp NAME    → stems looked up in default configs dir
+        (none)        → default experiment (_DEFAULT_EXP)
+    """
+    if args.config_dir is not None:
+        config_dir = Path(args.config_dir)
+        if not config_dir.is_dir():
+            print(f'[ERROR] --config-dir not found: {config_dir}')
+            sys.exit(1)
+        yamls = sorted(config_dir.glob('*.yaml'))
+        if args.exp:
+            filter_set = set(args.exp)
+            yamls = [y for y in yamls if y.stem in filter_set]
+        return [(y.stem, y) for y in yamls]
+
+    if args.config_file is not None:
+        cf = Path(args.config_file)
+        if not cf.exists():
+            print(f'[ERROR] --config-file not found: {cf}')
+            sys.exit(1)
+        return [(cf.stem, cf)]
+
+    # Default / legacy mode: --exp NAME [NAME ...] or fall back to _DEFAULT_EXP
+    exp_names = args.exp if args.exp else [_DEFAULT_EXP]
+    experiments: List[Tuple[str, Path]] = []
+    for name in exp_names:
+        yaml_path = _CONFIGS_DIR / f'{name}.yaml'
+        if not yaml_path.exists():
+            print(f'[ERROR] Experiment config not found: {yaml_path}')
+            sys.exit(1)
+        experiments.append((name, yaml_path))
+    return experiments
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -194,6 +272,8 @@ def _build_cfg(exp_yaml: Path, args) -> dict:
 
     Priority (highest → lowest):
         CLI args > experiment YAML > AudioSetStrong.yaml defaults
+
+    Post-merge: ``experiment.hlp_enabled`` overrides ``data.hlp_enabled``.
     """
     # 1. Experiment YAML
     with open(exp_yaml) as fh:
@@ -211,7 +291,12 @@ def _build_cfg(exp_yaml: Path, args) -> dict:
             if merged:
                 cfg[section] = merged
 
-    # Resolve relative paths in data and semantic sections to absolute
+    # 3. HLP superscript: experiment.hlp_enabled wins over data.hlp_enabled
+    exp_cfg = cfg.get('experiment', {})
+    if 'hlp_enabled' in exp_cfg:
+        cfg.setdefault('data', {})['hlp_enabled'] = bool(exp_cfg['hlp_enabled'])
+
+    # 4. Resolve relative paths in data and semantic sections to absolute
     for section in ('data', 'semantic'):
         for key, val in cfg.get(section, {}).items():
             if isinstance(val, str) and not Path(val).is_absolute():
@@ -219,7 +304,7 @@ def _build_cfg(exp_yaml: Path, args) -> dict:
                 if resolved.exists():
                     cfg[section][key] = str(resolved)
 
-    # 3. CLI overrides (win when explicitly passed; YAML values respected otherwise)
+    # 5. CLI overrides (win when explicitly passed; YAML values respected otherwise)
     data = cfg.setdefault('data', {})
     if args.window_s is not None:
         data['window_s'] = args.window_s
@@ -322,7 +407,11 @@ def _run_experiment(
     L.seed_everything(seed, workers=True)
 
     # 4. DataModule ───────────────────────────────────────────────────────────
-    dm = AudioSetStrongDataModule(cfg)
+    dataset_key = cfg.get('experiment', {}).get('dataset', 'audioset_strong').lower()
+    if dataset_key == 'starss23':
+        dm = STARSS23SEDDataModule(cfg)
+    else:
+        dm = AudioSetStrongDataModule(cfg)
     dm.setup('fit')
 
     # 5. Model ────────────────────────────────────────────────────────────────
@@ -349,9 +438,6 @@ def _run_experiment(
             print(f'  [WARN] Could not restore metrics log: {exc}')
 
     # 6. Callbacks ────────────────────────────────────────────────────────────
-    # Checkpoint monitor is configurable via training.checkpoint_monitor in the YAML.
-    # Use an alias without '/' (e.g. 'val_map_macro', 'val_omap') because
-    # Lightning's ModelCheckpoint requires slash-free metric names.
     ckpt_monitor = str(
         cfg.get('training', {}).get('checkpoint_monitor', 'val_map_macro')
     )
@@ -421,7 +507,6 @@ def _run_experiment(
     limit_batches = args.limit_batches
     using_limit   = limit_batches > 0.0
     if using_limit:
-        # Float in (0,1] → fraction; >= 1 → int number of batches
         lb = int(limit_batches) if limit_batches >= 1.0 else limit_batches
         trainer_kwargs.update(
             limit_train_batches = lb,
@@ -442,24 +527,22 @@ def _run_experiment(
     last_path = ckpt_dir / 'last.ckpt'
 
     if using_limit:
-        # Smoke-test run: keep last.ckpt so next run resumes; status stays running
         print(
             '  [limit-batches] Smoke test finished.  '
             'Status remains "running" for auto-resume.'
         )
         return
 
-    # Full run completed — clean up last.ckpt and mark completed
     if last_path.exists():
         last_path.unlink()
 
     best_score = float(best_cb.best_model_score or 0.0)
     state = {
-        'status':            'completed',
-        'best_ckpt':         best_cb.best_model_path,
-        'best_val_score':    best_score,
+        'status':             'completed',
+        'best_ckpt':          best_cb.best_model_path,
+        'best_val_score':     best_score,
         'checkpoint_monitor': ckpt_monitor,
-        'completed_at':      _now_iso(),
+        'completed_at':       _now_iso(),
     }
     _save_state(state, exp_dir)
     print(f'  Completed.  {ckpt_monitor}={best_score:.4f}')
@@ -470,64 +553,91 @@ def _run_experiment(
 # ══════════════════════════════════════════════════════════════════════════════
 
 def main() -> None:
-    args     = _parse_args()
-    exp_name = args.exp
-    exp_dir  = _RESULTS_ROOT / exp_name
-    exp_yaml = _CONFIGS_DIR / f'{exp_name}.yaml'
+    args = _parse_args()
 
-    if not exp_yaml.exists():
-        print(f'[ERROR] Experiment config not found: {exp_yaml}')
+    # ── --list without any experiment filter → show all known runs ────────────
+    if args.list and args.config_dir is None and args.config_file is None and not args.exp:
+        if _RESULTS_ROOT.exists():
+            dirs = [d for d in sorted(_RESULTS_ROOT.iterdir()) if d.is_dir()]
+            if dirs:
+                print(f'\n{"Experiment":<40}  {"Status":<12}  Info')
+                print('-' * 80)
+                for d in dirs:
+                    _print_state(d.name, d)
+                print()
+            else:
+                print('No experiments yet.')
+        else:
+            print('No experiments yet.')
+        return
+
+    # ── Resolve which experiments to run / list ───────────────────────────────
+    experiments = _resolve_experiments(args)
+
+    if not experiments:
+        print('[ERROR] No experiment configs found (check --config-dir or --exp).')
         sys.exit(1)
 
+    # ── --list with a specific source ─────────────────────────────────────────
     if args.list:
-        _print_state(exp_name, exp_dir)
+        print(f'\n{"Experiment":<40}  {"Status":<12}  Info')
+        print('-' * 80)
+        for exp_name, _ in experiments:
+            _print_state(exp_name, _RESULTS_ROOT / exp_name)
+        print()
         return
 
-    state  = _load_state(exp_dir)
-    status = state.get('status', 'pending')
+    # ── Start TensorBoard once for all experiments ────────────────────────────
+    _start_tensorboard(_RESULTS_ROOT)
 
-    if status == 'completed' and not args.force:
-        print(f'[SKIP] {exp_name} — already completed.  Use --force to re-run.')
-        return
+    # ── Iterate over experiments ──────────────────────────────────────────────
+    for exp_name, exp_yaml in experiments:
+        exp_dir = _RESULTS_ROOT / exp_name
+        state  = _load_state(exp_dir)
+        status = state.get('status', 'pending')
 
-    was_interrupted = (status == 'running')
+        if status == 'completed' and not args.force:
+            print(f'[SKIP] {exp_name} — already completed.  Use --force to re-run.')
+            continue
 
-    cfg = _build_cfg(exp_yaml, args)
+        was_interrupted = (status == 'running')
+        cfg = _build_cfg(exp_yaml, args)
 
-    t_cfg = cfg.get('training', {})
-    d_cfg = cfg.get('data',     {})
+        t_cfg        = cfg.get('training', {})
+        d_cfg        = cfg.get('data',     {})
+        dataset_name = cfg.get('experiment', {}).get('dataset', 'audioset_strong')
 
-    loss_label = str(t_cfg.get('loss', 'bce')).upper()
-    if loss_label == 'OBCE':
-        loss_label += f'  beta={t_cfg.get("obce_beta", 1.0)}'
+        loss_label = str(t_cfg.get('loss', 'bce')).upper()
+        if loss_label == 'OBCE':
+            loss_label += f'  beta={t_cfg.get("obce_beta", 1.0)}'
 
-    sampler_label = (
-        str(t_cfg.get('balanced_sampler_formula', 'maxpos')).upper()
-        if t_cfg.get('weighted_sampler', False)
-        else 'off'
-    )
+        sampler_label = (
+            str(t_cfg.get('balanced_sampler_formula', 'maxpos')).upper()
+            if t_cfg.get('weighted_sampler', False)
+            else 'off'
+        )
 
-    hlp_label   = 'ON'  if d_cfg.get('hlp_enabled',  False) else 'off'
-    omap_label  = f'every {t_cfg.get("omap_every_n", 5)} epochs' \
-                  if t_cfg.get('omap_enabled', False) else 'off'
-    aug_label   = 'ON'  if cfg.get('augmentation', {}).get('enabled', False) else 'off'
-    monitor     = str(t_cfg.get('checkpoint_monitor', 'val_map_macro'))
+        hlp_label  = 'ON'  if d_cfg.get('hlp_enabled',  False) else 'off'
+        omap_label = (f'every {t_cfg.get("omap_every_n", 5)} epochs'
+                      if t_cfg.get('omap_enabled', False) else 'off')
+        aug_label  = 'ON'  if cfg.get('augmentation', {}).get('enabled', False) else 'off'
+        monitor    = str(t_cfg.get('checkpoint_monitor', 'val_map_macro'))
 
-    print(f'\n{"=" * 60}')
-    print(f'[RUN]  {exp_name}')
-    print(f'       window={d_cfg["window_s"]:.1f}s  '
-          f'hop={d_cfg["hop_s"]:.1f}s  '
-          f'lr={t_cfg["lr"]}  '
-          f'epochs={t_cfg["epochs"]}')
-    print(f'       loss={loss_label}  sampler={sampler_label}  '
-          f'HLP={hlp_label}  aug={aug_label}')
-    print(f'       oMAP={omap_label}  monitor={monitor}')
-    print(f'{"=" * 60}\n')
+        ws = d_cfg.get('window_s')
+        hs = d_cfg.get('hop_s')
+        ws_s = f'{ws:.1f}s' if ws is not None else '?'
+        hs_s = f'{hs:.1f}s' if hs is not None else '?'
 
-    # Start TensorBoard (port 6007 to avoid clash with main.py on 6006)
-    _start_tensorboard(exp_dir / 'tb_logs')
+        print(f'\n{"=" * 60}')
+        print(f'[RUN]  {exp_name}')
+        print(f'       dataset={dataset_name}  window={ws_s}  hop={hs_s}')
+        print(f'       lr={t_cfg["lr"]}  epochs={t_cfg["epochs"]}')
+        print(f'       loss={loss_label}  sampler={sampler_label}  '
+              f'HLP={hlp_label}  aug={aug_label}')
+        print(f'       oMAP={omap_label}  monitor={monitor}')
+        print(f'{"=" * 60}\n')
 
-    _run_experiment(exp_name, cfg, args, was_interrupted)
+        _run_experiment(exp_name, cfg, args, was_interrupted)
 
     print('\nDone.')
 

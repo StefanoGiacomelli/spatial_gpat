@@ -142,7 +142,7 @@ class NASLightningModule(L.LightningModule):
         # Supported for both STARSS23 and TAU-NIGENS2021.
         # Graceful fallback to None (uniform weighting) if path is absent.
         pos_weight = None
-        root_path  = cfg.get('data', {}).get('root_path', None)
+        root_path  = cfg.get('data', {}).get('root_path') or cfg.get('data', {}).get('starss_root')
         if root_path:
             try:
                 if dataset_name == 'STARSS23':

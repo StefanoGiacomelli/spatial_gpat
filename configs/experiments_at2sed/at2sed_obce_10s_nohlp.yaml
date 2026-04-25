@@ -1,15 +1,16 @@
-# AT2SED — BCE loss, window 10.0s (EPANNs SR = 32 kHz)
+# AT2SED — OBCE loss, window 10.0s, HLP DISABLED
 # =====================================================================
-# Same as at2sed_bce.yaml but with a fixed input window of 10.0s.
-# Window sweep: enables comparison across temporal receptive field sizes
-# with sample rate aligned to the EPANNs semantic backbone (32 kHz).
+# Identical to at2sed_obce_10s but with HLP (Hierarchical Label
+# Propagation) explicitly disabled.
+# experiment.hlp_enabled overrides the AudioSetStrong.yaml default.
 #
 # Run with:
-#   python main_at2sed.py --exp at2sed_bce_10s
+#   python main_at2sed.py --exp at2sed_obce_10s_nohlp
 
 experiment:
-  name: at2sed_bce_10s
+  name: at2sed_obce_10s_nohlp
   seed: 42
+  hlp_enabled: false          # forces data.hlp_enabled=false (overrides dataset default)
 
 model:
   n_cls: 456
@@ -21,14 +22,15 @@ semantic:
   head_group:  {init: pretrained}
 
 data:
-  window_s: 10.0            # input window duration in seconds
-  hop_s:    10.0            # non-overlapping (hop = window, no data overlap)
+  window_s: 10.0
+  hop_s:    10.0
 
 training:
-  loss:                      bce
+  loss:                      obce
+  obce_beta:                 1.0
 
   weighted_sampler:          true
-  balanced_sampler_formula:  psla      # psla | maxpos
+  balanced_sampler_formula:  psla
   pos_weight_max:            20.0
   class_balance:             false
   rare_class_threshold:      0.1

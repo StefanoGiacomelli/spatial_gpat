@@ -1,8 +1,6 @@
 /data/
 /logs/
 /runs/
-# Temporary
-/neural_srp/
 
 *.venv/
 __pycache__/
