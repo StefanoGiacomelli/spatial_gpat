@@ -111,7 +111,7 @@ _DEFAULT_NUM_WORKERS = 4
 _DEFAULT_WINDOW_S    = 0.5   # fallback if neither CLI nor YAML specifies window
 _DEFAULT_HOP_S       = None  # fallback: equal to window_s (no overlap)
 EFFECTIVE_BATCH      = 32   # target for gradient accumulation
-EARLY_STOPPING_PATIENCE = 100  # epochs without improvement before stopping
+EARLY_STOPPING_PATIENCE = 50  # epochs without improvement before stopping
 
 
 # ══════════════════════════════════════════════════════════════════════════════

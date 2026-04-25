@@ -8,7 +8,7 @@ Wraps ``AT2SEDModel`` for multi-label SED fine-tuning on AudioSet-Strong.
   * ``on_validation_epoch_end`` — flush metrics, TensorBoard log, JSON append
   * ``test_step``               — metric accumulation on test split
   * ``on_test_epoch_end``       — flush metrics, JSON append
-  * ``configure_optimizers``    — Adam with fixed learning rate (no scheduler)
+  * ``configure_optimizers``    — Adam + ReduceLROnPlateau (monitors val_map_macro)
   * ``set_metrics_path(path)``  — inject JSON log path after construction
   * ``set_pos_weight(pw)``      — inject class-imbalance weights after DataModule setup
 
@@ -25,7 +25,8 @@ Training (per step + per epoch):
 
 Validation (per epoch):
   ``val/loss``, ``val/map_macro``, ``val/auroc_macro``, ``val/f1_macro``,
-  ``val/f1_micro``, ``val/precision_macro``, ``val/recall_macro``
+  ``val/f1_micro``, ``val/precision_macro``, ``val/recall_macro``,
+  ``train/lr``
 
 Test (once, after ``trainer.test()``):
   ``test/map_macro``, ``test/auroc_macro``, …  (same metric set)
@@ -230,6 +231,12 @@ class AT2SEDLightningModule(L.LightningModule):
                 print(f'[AT2SEDLightningModule] epoch={epoch}  val/omap={omap_val:.4f}')
             self._omap.reset()
 
+        # ── LR log ───────────────────────────────────────────────────────────
+        opt = self.optimizers()
+        if opt is not None:
+            current_lr = opt.param_groups[0]['lr']
+            self.log('train/lr', current_lr, on_epoch=True, sync_dist=True)
+
         # ── JSON log ─────────────────────────────────────────────────────────
         if self._metrics_path is not None:
             epoch_dict: dict = {'epoch': self.current_epoch}
@@ -281,19 +288,40 @@ class AT2SEDLightningModule(L.LightningModule):
 
     def configure_optimizers(self):
         """
-        Adam optimizer with fixed learning rate (no scheduler).
+        Adam optimizer + ReduceLROnPlateau scheduler.
 
-        LR is read from ``cfg['training']['lr']`` (default 1e-3).
+        Reads from ``cfg['training']``:
+          lr               — initial learning rate (default 1e-3)
+          lr_reduce_factor — multiplicative factor on plateau (default 0.75)
+          lr_patience      — epochs without improvement before reducing (default 2)
+          lr_min           — minimum learning rate floor (default 1e-5)
 
-        Returns
-        -------
-        ``torch.optim.Adam`` instance (Lightning format).
+        Scheduler monitors ``val_map_macro`` (higher = better).
         """
         train_cfg = self.hparams['cfg'].get('training', {})
-        lr        = float(train_cfg.get('lr', 1e-3))
+        lr        = float(train_cfg.get('lr',               1e-3))
+        factor    = float(train_cfg.get('lr_reduce_factor', 0.75))
+        patience  = int(  train_cfg.get('lr_patience',      2))
+        lr_min    = float(train_cfg.get('lr_min',           1e-5))
 
         params    = [p for p in self.model.parameters() if p.requires_grad]
-        return torch.optim.Adam(params, lr=lr)
+        optimizer = torch.optim.Adam(params, lr=lr)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode     = 'max',
+            factor   = factor,
+            patience = patience,
+            min_lr   = lr_min,
+        )
+        return {
+            'optimizer':    optimizer,
+            'lr_scheduler': {
+                'scheduler': scheduler,
+                'monitor':   'val_map_macro',
+                'interval':  'epoch',
+                'frequency': 1,
+            },
+        }
 
     # ── Trainable params helper ───────────────────────────────────────────────
 
