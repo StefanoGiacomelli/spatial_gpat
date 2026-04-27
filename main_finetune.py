@@ -5,27 +5,33 @@ main_finetune.py — Phase 4 Fine-Tuning Pipeline
 Runs fine-tuning experiments sequentially on the mixed STARSS23 + TAU-NIGENS2021
 dataset using the best NAS architecture (exp_r3_t1_cs01).
 
-Differences from main.py
+Differences from main_nas-seld.py
 -------------------------
   * DataModule : FinetuneDataModule (mixed STARSS23 + TAU-NIGENS2021 train;
                  STARSS23-only val/test for cross-phase metric comparability)
   * ``--pretrained-ckpt PATH`` : optional; load model weights only (fresh
                                  optimizer, epoch counter reset to 0).
-                                 Default = fresh initialisation (same as main.py).
+                                 Default = fresh initialisation (same as main_nas-seld.py).
   * ``data.starss_root`` and ``data.tau_root`` injected separately (no --dataset).
   * Default run dir : runs/foa/finetune/
   * Default config  : configs/experiments_nas-seld/foa/finetune/
   * _DEFAULT_BATCH_SIZE = 1  (full-clip mode; effective batch = 16 via accum)
-  * _DEFAULT_LR          = 1e-4
-  * _DEFAULT_EPOCHS      = 50
+  * _DEFAULT_LR          = 5e-4
+  * _DEFAULT_EPOCHS      = 100
+  * LR scheduler: ReduceLROnPlateau (mode='min', monitor='val_seld_score',
+                  factor=0.75, patience=20, min_lr=1e-5 — all configurable
+                  via ``training:`` in the experiment YAML)
 
 Config YAML notes
 -----------------
 Training-specific keys read from each experiment YAML::
 
     training:
-      focal_gamma     : 0.0   # 0 = standard BCE; 2.0 = focal
-      pos_weight_max  : 20.0  # cap on per-class pos_weight
+      focal_gamma       : 0.0   # 0 = standard BCE; 2.0 = focal
+      pos_weight_max    : 20.0  # cap on per-class pos_weight
+      lr_reduce_factor  : 0.75  # ReduceLROnPlateau multiplicative factor
+      lr_patience       : 20    # epochs without improvement before LR reduction
+      lr_min            : 1e-5  # LR floor
 
 The ``augmentation:`` block is read verbatim from the YAML (not merged from a
 dataset config file) — enabled by default for fine-tuning.
@@ -93,7 +99,7 @@ import torch
 import yaml
 import lightning as L
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
-from lightning.pytorch.loggers import TensorBoardLogger
+from lightning.pytorch.loggers import TensorBoardLogger, WandbLogger
 
 # ── Project path setup ────────────────────────────────────────────────────────
 _ROOT = Path(__file__).resolve().parent
@@ -101,7 +107,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from experiments_nas_seld.train import NASLightningModule       # noqa: E402
-from datasets.finetune_datamodule import FinetuneDataModule     # noqa: E402
+from datasets.datamodule import FinetuneDataModule              # noqa: E402
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Constants
@@ -112,9 +118,9 @@ VAL_FRACTION     = 0.2
 EFFECTIVE_BATCH  = 16
 
 _DEFAULT_EPOCHS      = 100
+_DEFAULT_PATIENCE    = 30
 _DEFAULT_BATCH_SIZE  = 1
-_DEFAULT_LR          = 5e-4
-_DEFAULT_PATIENCE    = 20
+_DEFAULT_LR          = 1e-3   # 5e-4 is optimal
 _DEFAULT_NUM_WORKERS = 4
 _DEFAULT_WINDOW_S    = 10.0   # 0 = full-clip mode
 _DEFAULT_HOP_S       =  5.0   # 0 = non-overlapping windows; ignored in full-clip mode
@@ -252,13 +258,16 @@ def _build_finetune_cfg(exp_yaml_path: Path, args) -> dict:
 
     # Base training block (CLI-driven defaults)
     base_training = {
-        'lr':              args.lr,
-        'epochs':          args.epochs,
-        'batch_size':      args.batch_size,
-        'lambda_spatial':  0.9,
-        'lambda_semantic': 0.1,
-        'beta_sed':        0.7,
-        'angle_thresh':    20.0,
+        'lr':               args.lr,
+        'epochs':           args.epochs,
+        'batch_size':       args.batch_size,
+        'lambda_spatial':   0.9,
+        'lambda_semantic':  0.1,
+        'beta_sed':         0.7,
+        'angle_thresh':     20.0,
+        'lr_reduce_factor': 0.75,   # ReduceLROnPlateau factor
+        'lr_patience':      3,      # ReduceLROnPlateau patience (epochs)
+        'lr_min':           1e-5,   # ReduceLROnPlateau LR floor
     }
     # YAML training section overrides defaults (focal_gamma, pos_weight_max, …)
     base_training.update(cfg.get('training', {}))
@@ -409,10 +418,16 @@ def _run_experiment(
           + ('  [no accumulation]' if accum == 1 else ''))
 
     # 7. Logger + Trainer ─────────────────────────────────────────────────────
-    logger = TensorBoardLogger(
+    tb_logger = TensorBoardLogger(
         save_dir = str(CKPT_DIR),
         name     = exp_name,
         version  = 0,
+    )
+    
+    wb_logger = WandbLogger(
+        project  = 'spatial-gpat',
+        name     = exp_name,
+        config   = cfg
     )
 
     trainer_kwargs = dict(
@@ -423,7 +438,7 @@ def _run_experiment(
         gradient_clip_val       = 1.0,
         accumulate_grad_batches = accum,
         log_every_n_steps       = 5,
-        logger                  = logger,
+        logger                  = [tb_logger, wb_logger],
         num_sanity_val_steps    = 0,
     )
     if args.limit_batches > 0:
@@ -477,7 +492,7 @@ def main() -> None:
         config_dir = (args.config_dir or _DEFAULT_CONFIGS_DIR).resolve()
         exp_names  = sorted(p.stem for p in config_dir.glob('*.yaml'))
 
-    # All finetune runs share a single run dir (unlike main.py per-config-dir layout)
+    # All finetune runs share a single run dir (unlike main_nas-seld.py per-config-dir layout)
     run_dir    = args.run_dir or _FINETUNE_RUN_DIR
     STATE_FILE = run_dir / 'experiment_state.json'
 

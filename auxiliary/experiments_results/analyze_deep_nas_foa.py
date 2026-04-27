@@ -51,7 +51,7 @@ import yaml
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-ROOT        = Path(__file__).resolve().parent.parent
+ROOT        = Path(__file__).resolve().parent.parent.parent
 RUNS_DIR    = ROOT / 'runs' / 'foa'
 RESULTS_DIR = ROOT / 'results'
 RESULTS_DIR.mkdir(exist_ok=True)

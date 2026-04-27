@@ -36,7 +36,7 @@ import matplotlib.colors as mcolors
 import matplotlib.patches as mpatches
 
 
-_ROOT       = pathlib.Path(__file__).parent.parent
+_ROOT       = pathlib.Path(__file__).parent.parent.parent
 RESULTS_DIR = _ROOT / 'results'
 FIGURES_DIR = _ROOT / 'figures'
 

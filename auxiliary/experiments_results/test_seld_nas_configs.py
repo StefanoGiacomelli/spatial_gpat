@@ -64,7 +64,7 @@ SR          = 24000    # STARSS23 native SR; NASModel resamples to 32 kHz
 DURATION_S  = 30.0
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-REPO_ROOT       = Path(__file__).resolve().parent.parent
+REPO_ROOT       = Path(__file__).resolve().parent.parent.parent
 CONFIGS_ROOT    = REPO_ROOT / 'configs' / 'experiments_nas-seld' / 'foa' / 'shallow_spec'
 RESULTS_DIR     = REPO_ROOT / 'results'
 

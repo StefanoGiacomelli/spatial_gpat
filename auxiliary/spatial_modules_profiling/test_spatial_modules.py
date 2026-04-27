@@ -48,7 +48,7 @@ import yaml
 from torchinfo import summary
 
 # ── Path setup ────────────────────────────────────────────────────────────────
-_ROOT = pathlib.Path(__file__).parent.parent
+_ROOT = pathlib.Path(__file__).parent.parent.parent
 sys.path.insert(0, str(_ROOT))
 
 from spatial_modules import (

@@ -47,7 +47,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT))
 
 _DEFAULT_STARSS_ROOT = _PROJECT_ROOT / 'data' / 'STARSS23'
@@ -55,9 +55,9 @@ _DEFAULT_TAU_ROOT    = _PROJECT_ROOT / 'data' / 'TAU-NIGENS2021'
 _DEFAULT_CONFIG      = (_PROJECT_ROOT / 'configs' / 'experiments_nas-seld'
                         / 'foa' / 'finetune' / 'exp_ft_mixed_bce.yaml')
 
-from datasets.starss23           import STARSS23Dataset
-from datasets.tau_nigens         import TAUNIGENSDataset
-from datasets.mixed_seld_dataset import compute_combined_class_counts
+from datasets.starss23   import STARSS23Dataset
+from datasets.tau_nigens import TAUNIGENSDataset
+from datasets.utils      import compute_combined_class_counts
 
 # ── Constants ────────────────────────────────────────────────────────────────
 

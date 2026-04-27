@@ -91,8 +91,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from experiments_at2sed import AT2SEDLightningModule   # noqa: E402
-from datasets.audioset_strong import AudioSetStrongDataModule   # noqa: E402
-from datasets.starss23_sed_datamodule import STARSS23SEDDataModule   # noqa: E402
+from datasets.datamodule import AudioSetStrongDataModule, STARSS23SEDDataModule   # noqa: E402
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -348,7 +347,7 @@ def _find_resume_ckpt(ckpt_dir: Path) -> Optional[str]:
 # TensorBoard subprocess
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _start_tensorboard(logdir: Path, port: int = 6007) -> subprocess.Popen:
+def _start_tensorboard(logdir: Path, port: int = 6009) -> subprocess.Popen:
     """Launch TensorBoard and register cleanup handlers."""
     proc = subprocess.Popen(
         [sys.executable, '-m', 'tensorboard.main',
@@ -499,7 +498,7 @@ def _run_experiment(
         devices                 = devices,
         gradient_clip_val       = 1.0,
         accumulate_grad_batches = accum,
-        log_every_n_steps       = 10,
+        log_every_n_steps       = 5,
         logger                  = logger,
         num_sanity_val_steps    = 0,
     )

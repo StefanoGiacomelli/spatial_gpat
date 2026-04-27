@@ -13,5 +13,6 @@ torchmetrics
 torchinfo
 lightning
 tensorboard
+python-dotenv
 matplotlib
 seaborn

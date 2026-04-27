@@ -8,7 +8,7 @@ Wraps ``NASModel`` into a ``pl.LightningModule`` with:
   * ``on_validation_epoch_end``    — flush and log SELD + semantic metrics; JSON log
   * ``test_step``                  — accumulate SELD + semantic metrics
   * ``on_test_epoch_end``          — flush and log all metrics + confusion matrix to JSON
-  * ``configure_optimizers``       — Adam + CosineAnnealingLR scheduler
+  * ``configure_optimizers``       — Adam + ReduceLROnPlateau scheduler
   * ``set_metrics_path(path)``     — inject JSON log path after construction
 
 Loss design
@@ -68,7 +68,7 @@ from .loss import (
     SELDMetrics,
 )
 
-# Dataset → number of classes mapping (mirrors main.py DATASET_ROOTS)
+# Dataset → number of classes mapping (mirrors main_nas-seld.py DATASET_ROOTS)
 _N_CLASSES: Dict[str, int] = {
     'STARSS23':       13,
     'TAU-NIGENS2021': 12,
@@ -187,7 +187,7 @@ class NASLightningModule(L.LightningModule):
     def set_metrics_path(self, path: Path) -> None:
         """Inject JSON metrics log path after construction.
 
-        Called by ``main.py`` so that per-epoch and test metrics
+        Called by ``main_nas-seld.py`` so that per-epoch and test metrics
         are persisted to ``{metrics_dir}/{exp_name}.json``.
 
         Args:
@@ -316,6 +316,11 @@ class NASLightningModule(L.LightningModule):
                     rows=self.metrics.compute_perclass(),
                 )
 
+        # ── LR ───────────────────────────────────────────────────────────────
+        opt = self.optimizers()
+        if opt is not None:
+            self.log('train/lr', opt.param_groups[0]['lr'], on_epoch=True, sync_dist=True)
+
     # ------------------------------------------------------------------
     # Test
     # ------------------------------------------------------------------
@@ -382,27 +387,43 @@ class NASLightningModule(L.LightningModule):
     # ------------------------------------------------------------------
 
     def configure_optimizers(self):
-        """Return Adam optimizer with CosineAnnealingLR scheduler.
+        """Return Adam optimizer with ReduceLROnPlateau scheduler.
 
-        Learning rate is read from ``cfg['training']['lr']``.
-        The scheduler decays LR from ``lr`` to ``lr * 0.1`` over ``max_epochs``
-        following a cosine curve.
+        Reads from ``cfg['training']``:
+          lr               — initial learning rate (default 5e-4)
+          lr_reduce_factor — multiplicative factor on plateau (default 0.75)
+          lr_patience      — epochs without improvement before reducing (default 20)
+          lr_min           — minimum learning rate floor (default 1e-5)
+
+        Scheduler monitors ``val_seld_score`` (lower = better, mode='min').
 
         Returns
         -------
         dict with 'optimizer' and 'lr_scheduler' keys (Lightning format).
         """
-        lr        = float(self.hparams['cfg'].get('training', {}).get('lr', 5e-4))
+        train_cfg = self.hparams['cfg'].get('training', {})
+        lr        = float(train_cfg.get('lr', 5e-4))
+        factor    = float(train_cfg.get('lr_reduce_factor', 0.75))
+        patience  = int(train_cfg.get('lr_patience', 20))
+        lr_min    = float(train_cfg.get('lr_min', 1e-5))
+
         params    = [p for p in self.model.parameters() if p.requires_grad]
         optimizer = torch.optim.Adam(params, lr=lr)
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer,
-            T_max   = self.trainer.max_epochs,
-            eta_min = lr * 0.1,
+            mode     = 'min',
+            factor   = factor,
+            patience = patience,
+            min_lr   = lr_min,
         )
         return {
             'optimizer':    optimizer,
-            'lr_scheduler': {'scheduler': scheduler, 'interval': 'epoch'},
+            'lr_scheduler': {
+                'scheduler': scheduler,
+                'monitor':   'val_seld_score',
+                'interval':  'epoch',
+                'frequency': 1,
+            },
         }
 
     # ------------------------------------------------------------------

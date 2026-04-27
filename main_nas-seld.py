@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-main.py — Resumable NAS Training Pipeline
-==========================================
-Runs NAS experiments sequentially with:
+main_nas-seld.py — Resumable NAS-SELD Training Pipeline
+=========================================================
+Runs NAS-SELD experiments sequentially with:
 
   * ``--dataset NAME``     — choose dataset at runtime (STARSS23 | TAU-NIGENS2021)
   * ``--config-dir DIR``   — custom directory with experiment YAMLs
@@ -35,28 +35,28 @@ Usage
 ::
 
     # Debug: 1 epoch, 5 batches
-    .venv/bin/python main.py --exp exp_spe_cb_fe_mg --epochs 1 --limit-batches 5
+    .venv/bin/python main_nas-seld.py --exp exp_spe_cb_fe_mg --epochs 1 --limit-batches 5
 
     # Use a specific dataset
-    .venv/bin/python main.py --dataset TAU-NIGENS2021 --exp exp_spe_cb_fe_mg
+    .venv/bin/python main_nas-seld.py --dataset TAU-NIGENS2021 --exp exp_spe_cb_fe_mg
 
     # Single config file from arbitrary path
-    .venv/bin/python main.py --config-file configs/experiments_nas-seld/foa/shallow_spec/exp_spe_cb_fe_bg.yaml
+    .venv/bin/python main_nas-seld.py --config-file configs/experiments_nas-seld/foa/shallow_spec/exp_spe_cb_fe_bg.yaml
 
     # Custom config directory (e.g. for deep NAS configs)
-    .venv/bin/python main.py --config-dir configs/experiments_nas-seld/foa/deep_reg/
+    .venv/bin/python main_nas-seld.py --config-dir configs/experiments_nas-seld/foa/deep_reg/
 
     # List all statuses
-    .venv/bin/python main.py --list
+    .venv/bin/python main_nas-seld.py --list
 
     # Re-run a completed experiment from scratch
-    .venv/bin/python main.py --exp exp_spe_cb_fe_mg --force
+    .venv/bin/python main_nas-seld.py --exp exp_spe_cb_fe_mg --force
 
     # Full run (all experiments in config-dir)
-    .venv/bin/python main.py --epochs 20 --batch-size 16 --patience 5
+    .venv/bin/python main_nas-seld.py --epochs 20 --batch-size 16 --patience 5
 
     # Windowed mode (10 s / 5 s hop)
-    .venv/bin/python main.py --window-s 10 --hop-s 5
+    .venv/bin/python main_nas-seld.py --window-s 10 --hop-s 5
 
 Author
 ------
@@ -248,16 +248,21 @@ def _build_cfg(exp_yaml_path: Path, args) -> dict:
     """
     Load experiment YAML and inject training + data sections from CLI args.
 
+    Priority (lowest → highest):
+        runner defaults → dataset config YAML → experiment YAML → CLI
+
     Steps
     -----
     1. Load the experiment YAML.
-    2. Inject ``training:`` block from CLI (batch_size is the only CLI-overridable
-       training param; others come from the dataset config YAML).
-    3. Load ``configs/datasets/{dataset_name}.yaml`` if it exists and deep-merge
-       ``augmentation:`` and ``training:`` sections.  ``batch_size`` always wins
-       from CLI (step 4 re-asserts it after the merge).
-    4. Inject ``data:`` runtime params (root_path, windowing, workers).
-    5. Inject ``semantic.dataset`` from CLI ``--dataset`` argument.
+    2. Build base training block from runner defaults + CLI values.
+    3. Load ``configs/datasets/{dataset_name}.yaml`` if present; deep-merge
+       ``augmentation:`` and ``training:`` sections (dataset config wins over
+       runner defaults).
+    4. Merge experiment YAML ``training:`` section (exp YAML wins over dataset
+       config).
+    5. Re-assert CLI values (``lr``, ``epochs``, ``batch_size``) — always win.
+    6. Inject ``data:`` runtime params (root_path, windowing, workers).
+    7. Inject ``semantic.dataset`` from CLI ``--dataset`` argument.
     """
     with open(exp_yaml_path) as fh:
         cfg = yaml.safe_load(fh)
@@ -266,27 +271,36 @@ def _build_cfg(exp_yaml_path: Path, args) -> dict:
     dataset_name = args.dataset
     cfg.setdefault('semantic', {})['dataset'] = dataset_name
 
-    # 2. Base training block from CLI
-    cfg['training'] = {
-        'lr':              args.lr,
-        'epochs':          args.epochs,
-        'batch_size':      args.batch_size,
-        'lambda_spatial':  0.9,   # weight of tPIT (spatial) in total loss
-        'lambda_semantic': 0.1,   # weight of BCE (semantic) in total loss
-        'beta_sed':        0.6,   # SED/DOA split inside tPIT (DOA = 1-beta = 0.4)
-        'angle_thresh':    20.0,
+    # 2. Base training block (runner defaults + CLI)
+    base_training = {
+        'lr':               args.lr,
+        'epochs':           args.epochs,
+        'batch_size':       args.batch_size,
+        'lambda_spatial':   0.9,    # weight of tPIT (spatial) in total loss
+        'lambda_semantic':  0.1,    # weight of BCE (semantic) in total loss
+        'beta_sed':         0.6,    # SED/DOA split inside tPIT (DOA = 1-beta = 0.4)
+        'angle_thresh':     20.0,
+        'lr_reduce_factor': 0.75,   # ReduceLROnPlateau factor
+        'lr_patience':      20,     # ReduceLROnPlateau patience (epochs)
+        'lr_min':           1e-5,   # ReduceLROnPlateau LR floor
     }
 
-    # 3. Dataset-specific config (augmentation + training overrides)
+    # 3. Dataset config overrides defaults (augmentation + training)
     ds_cfg_path = _DATASET_CONFIGS_DIR / f'{dataset_name}.yaml'
     if ds_cfg_path.exists():
         with open(ds_cfg_path) as fh:
             ds_cfg = yaml.safe_load(fh) or {}
         cfg.setdefault('augmentation', {}).update(ds_cfg.get('augmentation', {}))
-        cfg['training'].update(ds_cfg.get('training', {}))
+        base_training.update(ds_cfg.get('training', {}))
 
-    # 4. CLI batch_size always takes precedence (re-assert after dataset merge)
-    cfg['training']['batch_size'] = args.batch_size
+    # 4. Experiment YAML training section overrides dataset config
+    base_training.update(cfg.get('training', {}))
+
+    # 5. CLI values always win (re-assert after all merges)
+    base_training['lr']         = args.lr
+    base_training['epochs']     = args.epochs
+    base_training['batch_size'] = args.batch_size
+    cfg['training'] = base_training
 
     # 5. Data runtime params
     if dataset_name not in DATASET_ROOTS:

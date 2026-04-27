@@ -81,7 +81,7 @@ if str(_ROOT) not in sys.path:
 
 from experiments_spatial           import SpatialLightningModule    # noqa: E402
 from experiments_spatial.train     import _infer_mode               # noqa: E402
-from datasets.spatial_datamodule   import SpatialDataModule         # noqa: E402
+from datasets.datamodule           import SpatialDataModule         # noqa: E402
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -96,7 +96,7 @@ _DEFAULT_BATCH_SIZE  = 4
 _DEFAULT_LR          = 1e-4
 _DEFAULT_NUM_WORKERS = 4
 EFFECTIVE_BATCH      = 16     # target effective batch size for gradient accumulation
-_TB_PORT             = 6008   # TensorBoard port (avoids clash with 6006/6007)
+_TB_PORT             = 6010   # TensorBoard port (6006=nas-seld, 6007=finetune, 6008=seld-only, 6009=at2sed)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -357,7 +357,7 @@ def _run_experiment(
         devices                 = devices,
         gradient_clip_val       = 1.0,
         accumulate_grad_batches = accum,
-        log_every_n_steps       = 10,
+        log_every_n_steps       = 5,
         logger                  = logger,
         num_sanity_val_steps    = 0,
     )
@@ -420,7 +420,7 @@ def main() -> None:
         sys.exit(1)
 
     cfg      = _build_cfg(config_file, args)
-    exp_name = str(cfg.get('experiment', {}).get('name', config_file.stem))
+    exp_name = config_file.stem
     exp_dir  = _RESULTS_ROOT / exp_name
 
     if args.list:

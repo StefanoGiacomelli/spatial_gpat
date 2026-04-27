@@ -46,7 +46,7 @@ import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
 import numpy as np
 
-_ROOT       = Path(__file__).resolve().parent.parent
+_ROOT       = Path(__file__).resolve().parent.parent.parent
 RESULTS_DIR = _ROOT / 'results'
 FIGURES_DIR = _ROOT / 'figures'
 

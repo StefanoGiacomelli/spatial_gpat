@@ -41,11 +41,11 @@ import yaml
 warnings.filterwarnings('ignore', message='.*No positive samples.*')
 warnings.filterwarnings('ignore', message='.*elements was resized.*')
 
-_ROOT = Path(__file__).resolve().parent.parent   # project root (tests/ → ../)
+_ROOT = Path(__file__).resolve().parent.parent.parent   # project root
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from datasets.audioset_strong import AudioSetStrongDataModule  # noqa: E402
+from datasets.datamodule import AudioSetStrongDataModule  # noqa: E402
 
 
 # ── Constants (mirror main_at2sed.py) ─────────────────────────────────────────

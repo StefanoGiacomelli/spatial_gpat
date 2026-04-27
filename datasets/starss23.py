@@ -31,7 +31,7 @@ from typing import List, Optional, Tuple
 import numpy as np
 import torch
 
-from .seld_dataset import SELDDataset
+from .utils import SELDDataset
 
 
 class STARSS23Dataset(SELDDataset):
