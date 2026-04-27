@@ -17,7 +17,7 @@ spatial_early:
   use_msca:       true
   msca_reduction: 4
   stride:         [1, 1]
-  dropout:        0.2
+  dropout:        0.0
 
 spatial_late:
   type:     track_transformer
@@ -25,13 +25,13 @@ spatial_late:
   d_model:  128
   n_heads:  4
   n_tracks: 2
-  dropout:  0.1
+  dropout:  0.0
 
 track_smoothing:
   type:        bigru
   n_layers:    1
   hidden_size: 256
-  dropout:     0.1
+  dropout:     0.0
 
 heads:
   n_tracks:  2
@@ -50,7 +50,7 @@ training:
   weighted_sampler: false
 
 augmentation:
-  enabled:      true
+  enabled:      false
   p_rotate:     0.5
   p_gain:       0.5
   p_elevflip:   0.3

@@ -60,7 +60,6 @@ training:
 
   lambda_act:   1.0
   lambda_doa:   1.0
-  lambda_dist:  0.5
 
   checkpoint_monitor:       val_lf    # mode auto-inferred as 'max'
   early_stopping_patience:  15

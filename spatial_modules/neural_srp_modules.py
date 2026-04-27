@@ -516,10 +516,9 @@ class SpatialSRPModel(nn.Module):
     """
     Standalone spatial SELD model built on top of NeuralSRPEncoder.
 
-    Three heads are applied to the framewise encoder embedding:
-        DOA      : Linear → Tanh   → (B, T, N_tracks, 3)  Cartesian unit vectors
-        Activity : Linear          → (B, T, N_tracks)      logits for BCE
-        Distance : Linear → Softplus → (B, T, N_tracks)   positive-valued cm
+    Two heads are applied to the framewise encoder embedding:
+        DOA      : Linear → Tanh → (B, T, N_tracks, 3)  Cartesian unit vectors
+        Activity : Linear        → (B, T, N_tracks)      logits for BCE
 
     Args:
         encoder_cfg : dict of NeuralSRPEncoder constructor kwargs
@@ -532,7 +531,6 @@ class SpatialSRPModel(nn.Module):
     Output dict:
         "doa"      : (B, T, N_tracks, 3)
         "activity" : (B, T, N_tracks)   raw logits
-        "distance" : (B, T, N_tracks)   cm, ≥ 0
     """
 
     def __init__(self, encoder_cfg: dict, n_tracks: int = 2) -> None:
@@ -541,9 +539,8 @@ class SpatialSRPModel(nn.Module):
         d             = encoder_cfg.get('d_out', 128)
         self.n_tracks = n_tracks
 
-        self.doa_head  = nn.Sequential(nn.Linear(d, n_tracks * 3), nn.Tanh())
-        self.act_head  = nn.Linear(d, n_tracks)
-        self.dist_head = nn.Sequential(nn.Linear(d, n_tracks), nn.Softplus())
+        self.doa_head = nn.Sequential(nn.Linear(d, n_tracks * 3), nn.Tanh())
+        self.act_head = nn.Linear(d, n_tracks)
 
     def forward(self,
                 wav:     torch.Tensor,
@@ -552,8 +549,7 @@ class SpatialSRPModel(nn.Module):
         B, T, _ = h.shape
         N   = self.n_tracks
 
-        doa  = self.doa_head(h).view(B, T, N, 3)       # (B, T, N, 3)
-        act  = self.act_head(h)                        # (B, T, N)
-        dist = self.dist_head(h)                       # (B, T, N)
+        doa = self.doa_head(h).view(B, T, N, 3)        # (B, T, N, 3)
+        act = self.act_head(h)                         # (B, T, N)
 
-        return {"doa": doa, "activity": act, "distance": dist}
+        return {"doa": doa, "activity": act}

@@ -38,8 +38,8 @@ heads:
   n_classes: 13
 
 cross_stitch:
-  cs_early_enabled: false
-  cs_late_enabled:  false
+  cs_early_enabled: true
+  cs_late_enabled:  true
 
 training:
   dataset_mode:    MixedSELD
@@ -50,7 +50,7 @@ training:
   weighted_sampler: true
 
 augmentation:
-  enabled:      true
+  enabled:      false
   p_rotate:     0.5
   p_gain:       0.5
   p_elevflip:   0.3

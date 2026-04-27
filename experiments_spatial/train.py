@@ -1,8 +1,8 @@
 """
 SpatialLightningModule — PyTorch Lightning wrapper for SpatialSRPModel
 =======================================================================
-Trains the standalone spatial SELD model (NeuralSRPEncoder + DOA/activity/
-distance heads) on STARSS23 MIC format audio.
+Trains the standalone spatial SELD model (NeuralSRPEncoder + DOA/activity
+heads) on STARSS23 MIC format audio.
 
 Checkpoint monitor : ``val_lf`` (Localization F-score %, mode=max).
 
@@ -46,7 +46,6 @@ class SpatialLightningModule(L.LightningModule):
     ``training.hnet_ckpt``   : path to HNetGRU checkpoint (required for ``hnet``).
     ``training.lambda_act``  : activity loss weight.
     ``training.lambda_doa``  : DOA loss weight.
-    ``training.lambda_dist`` : distance loss weight.
     ``training.lr``          : Adam learning rate.
     """
 
@@ -70,27 +69,24 @@ class SpatialLightningModule(L.LightningModule):
             self.mic_pos: Optional[torch.Tensor] = None
 
         # ── Loss ────────────────────────────────────────────────────────────
-        loss_type   = str(t_cfg.get('loss_type', 'pit')).lower()
-        lambda_act  = float(t_cfg.get('lambda_act',  1.0))
-        lambda_doa  = float(t_cfg.get('lambda_doa',  1.0))
-        lambda_dist = float(t_cfg.get('lambda_dist', 0.5))
+        loss_type  = str(t_cfg.get('loss_type', 'pit')).lower()
+        lambda_act = float(t_cfg.get('lambda_act', 1.0))
+        lambda_doa = float(t_cfg.get('lambda_doa', 1.0))
 
         if loss_type == 'hnet':
             self.loss_fn = SpatialHNetLoss(
-                hnet_ckpt   = str(t_cfg['hnet_ckpt']),
-                lambda_act  = lambda_act,
-                lambda_doa  = lambda_doa,
-                lambda_dist = lambda_dist,
-                dmota_wt    = float(t_cfg.get('dMOTA_wt', 1.0)),
-                dmotp_wt    = float(t_cfg.get('dMOTP_wt', 1.0)),
-                ids_wt      = float(t_cfg.get('IDS_wt',   1.0)),
-                n_tracks    = n_tracks,
+                hnet_ckpt  = str(t_cfg['hnet_ckpt']),
+                lambda_act = lambda_act,
+                lambda_doa = lambda_doa,
+                dmota_wt   = float(t_cfg.get('dMOTA_wt', 1.0)),
+                dmotp_wt   = float(t_cfg.get('dMOTP_wt', 1.0)),
+                ids_wt     = float(t_cfg.get('IDS_wt',   1.0)),
+                n_tracks   = n_tracks,
             )
         else:
             self.loss_fn = SpatialPITLoss(
-                lambda_act  = lambda_act,
-                lambda_doa  = lambda_doa,
-                lambda_dist = lambda_dist,
+                lambda_act = lambda_act,
+                lambda_doa = lambda_doa,
             )
 
         self.lr = float(t_cfg.get('lr', 1e-4))
@@ -116,7 +112,7 @@ class SpatialLightningModule(L.LightningModule):
         return self.mic_pos.unsqueeze(0).expand(B, -1, -1)   # (B, n_mics, 3)
 
     def _forward_step(self, batch):
-        wav, _accdoa, doa_t, act_t, dist_t = batch
+        wav, _accdoa, doa_t, act_t, _dist_t = batch
         B = wav.shape[0]
         pred = self.model(wav, self._expand_mic_pos(B))
 
@@ -125,12 +121,10 @@ class SpatialLightningModule(L.LightningModule):
         pred_trunc = {
             'doa':      pred['doa'][:, :T],
             'activity': pred['activity'][:, :T],
-            'distance': pred['distance'][:, :T],
         }
         targets = {
             'doa':      doa_t[:, :T],
             'activity': act_t[:, :T],
-            'distance': dist_t[:, :T],
         }
         return pred_trunc, targets
 
@@ -152,8 +146,8 @@ class SpatialLightningModule(L.LightningModule):
         self.log('val_loss', loss, prog_bar=True, sync_dist=True)
 
         self._val_metrics.update(
-            pred['doa'], pred['activity'], pred['distance'],
-            targets['doa'], targets['activity'], targets['distance'],
+            pred['doa'], pred['activity'],
+            targets['doa'], targets['activity'],
         )
 
     def on_validation_epoch_end(self) -> None:
@@ -177,8 +171,8 @@ class SpatialLightningModule(L.LightningModule):
         self.log('test_loss', loss, sync_dist=True)
 
         self._test_metrics.update(
-            pred['doa'], pred['activity'], pred['distance'],
-            targets['doa'], targets['activity'], targets['distance'],
+            pred['doa'], pred['activity'],
+            targets['doa'], targets['activity'],
         )
 
     def on_test_epoch_end(self) -> None:
