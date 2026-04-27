@@ -1,5 +1,5 @@
 # Dataset-specific training config — STARSS23
-# Loaded automatically by main.py when --dataset STARSS23 is used.
+# Loaded automatically by main_nas-seld.py when --dataset STARSS23 is used.
 # Merged into cfg['augmentation'] and cfg['training'].
 # CLI --batch-size always overrides training.batch_size.
 

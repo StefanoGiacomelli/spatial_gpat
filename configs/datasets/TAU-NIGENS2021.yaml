@@ -1,5 +1,5 @@
 # Dataset-specific training config — TAU-NIGENS2021
-# Loaded automatically by main.py when --dataset TAU-NIGENS2021 is used.
+# Loaded automatically by main_nas-seld.py when --dataset TAU-NIGENS2021 is used.
 # Merged into cfg['augmentation'] and cfg['training'].
 # CLI --batch-size always overrides training.batch_size.
 

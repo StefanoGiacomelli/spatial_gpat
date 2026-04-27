@@ -167,6 +167,10 @@ class SpatialLightningModule(L.LightningModule):
         self._epoch_metrics_log.append(entry)
         self._flush_metrics()
 
+        opt = self.optimizers()
+        if opt is not None:
+            self.log('train/lr', opt.param_groups[0]['lr'], on_epoch=True, sync_dist=True)
+
     def test_step(self, batch, _batch_idx):
         pred, targets = self._forward_step(batch)
         loss, _       = self.loss_fn(pred, targets)

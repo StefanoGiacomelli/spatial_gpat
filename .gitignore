@@ -1,8 +1,9 @@
-/data/
+/data/*
+!/data/setup_data.sh
+!/data/README.md
+
 /logs/
 /runs/
-# Temporary
-/neural_srp/
 
 *.venv/
 __pycache__/

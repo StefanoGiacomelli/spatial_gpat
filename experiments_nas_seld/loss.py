@@ -231,7 +231,7 @@ class tPITLoss(nn.Module):
 
         mse_all = (
             doa_r_all - doa_b.unsqueeze(1).expand_as(doa_r_all)
-        ).pow(2).sum(dim=-1).mean(dim=-1)                          # avg over N×3 → (BTC, P)
+        ).pow(2).sum(dim=-1).mean(dim=-1)                          # sum over XYZ, mean over N tracks → (BTC, P)
 
         # ── Select best permutation per frame (non-differentiable) ────────
         # Use UNWEIGHTED BCE for permutation selection so that the DOA term
@@ -244,6 +244,12 @@ class tPITLoss(nn.Module):
             reduction='none',
         ).mean(dim=-1)                                              # (BTC, P)
 
+        # Permutation selection is per (B,T,C): each class independently assigns its N
+        # track slots to the N target slots.  This is correct for Multi-ACCDOA where
+        # track identity within a class has no constraint relative to other classes.
+        # (The EIN-V2 reference selects per (B,T) because its DOA head has shape
+        # (B,T,N,3) without a class dimension; our (B,T,N,C,3) format makes
+        # per-class selection more appropriate.)
         pit_cost  = self.beta * bce_nopw + (1.0 - self.beta) * mse_all  # (BTC, P)
         best_idx  = pit_cost.argmin(dim=-1)                         # (BTC,)
         best_mask = F.one_hot(best_idx, P).float().detach()         # (BTC, P)

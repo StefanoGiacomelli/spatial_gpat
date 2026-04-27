@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 import torch
-from .seld_dataset import SELDDataset
+from .utils import SELDDataset
 
 
 class TAUNIGENSDataset(SELDDataset):

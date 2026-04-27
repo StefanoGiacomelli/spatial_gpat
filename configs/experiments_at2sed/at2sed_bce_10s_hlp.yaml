@@ -1,0 +1,42 @@
+# AT2SED — BCE loss, window 10.0s, HLP ENABLED
+# =====================================================================
+# Identical to at2sed_bce_10s but with HLP (Hierarchical Label
+# Propagation) enabled at the dataset level.
+# experiment.hlp_enabled overrides the AudioSetStrong.yaml default.
+#
+# Run with:
+#   python main_at2sed.py --exp at2sed_bce_10s_hlp
+
+experiment:
+  name: at2sed_bce_10s_hlp
+  seed: 42
+  hlp_enabled: true           # forces data.hlp_enabled=true (overrides dataset default)
+
+model:
+  n_cls: 456
+
+semantic:
+  checkpoint: semantic_backbone/epanns/checkpoint_closeto_.44.pt
+  early_group: {init: pretrained, frozen: false}
+  late_group:  {init: pretrained, frozen: false}
+  head_group:  {init: pretrained}
+
+data:
+  window_s: 10.0
+  hop_s:    10.0
+
+training:
+  loss:                      bce
+
+  weighted_sampler:          true
+  balanced_sampler_formula:  psla
+  pos_weight_max:            20.0
+  class_balance:             false
+  rare_class_threshold:      0.1
+  max_negative_fraction:     1.0
+
+  omap_enabled:              false
+  omap_every_n:              5
+
+  checkpoint_monitor:        val_map_macro
+  inference_threshold:       0.5
