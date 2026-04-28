@@ -53,6 +53,9 @@ from .neural_srp_modules import NeuralSRPEncoder, SpatialSRPModel
 # ── HNet (Hungarian network for soft source assignment) ───────────────────────
 from .hnet_modules import HNetGRU
 
+# ── Custom project modules ────────────────────────────────────────────────────
+from .custom_modules import TCNBlock, TCN
+
 __all__ = [
     # Adapters
     "CrossStitchBridge",
@@ -72,4 +75,6 @@ __all__ = [
     "NeuralSRPEncoder", "SpatialSRPModel",
     # HNet
     "HNetGRU",
+    # Custom
+    "TCNBlock", "TCN",
 ]

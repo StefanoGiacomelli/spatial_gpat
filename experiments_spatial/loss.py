@@ -7,15 +7,13 @@ Two loss implementations, selectable via ``training.loss_type`` in the YAML:
 ``SpatialPITLoss``   (``loss_type: pit``, **default**)
     Exhaustive Permutation-Invariant Training over the N_tracks! permutations
     (= 2 for N_tracks=2).  Jointly minimises activity BCE + DOA MSE (active
-    frames only) + distance Huber (active frames only).  No external checkpoint
-    required — trains from scratch.
+    frames only).  No external checkpoint required — trains from scratch.
 
 ``SpatialHNetLoss``  (``loss_type: hnet``)
     Uses a pre-trained ``HNetGRU`` (see ``spatial_modules/hnet_modules.py``)
-    to produce soft track-to-source assignment matrices (dMOTP + dMOTA losses),
-    extended with a Huber distance loss weighted by the HNet assignment
-    confidence.  Requires an external ``HNetGRU`` checkpoint; the HNet is
-    **frozen** during spatial model training.
+    to produce soft track-to-source assignment matrices (dMOTP + dMOTA losses).
+    Requires an external ``HNetGRU`` checkpoint; the HNet is **frozen** during
+    spatial model training.
 
     The ``HNetGRU`` checkpoint is NOT included in this repository — it must be
     trained separately using ``spatial_modules/hnet_modules.py``.  The default
@@ -46,32 +44,26 @@ class SpatialPITLoss(nn.Module):
 
     Loss per permutation:
 
-        L = λ_act  · BCE(act_logits, act_target)
-          + λ_doa  · MSE(doa_pred, doa_target) · activity_mask / active_count
-          + λ_dist · Huber(dist_pred/100, dist_target/100) · activity_mask / active_count
+        L = λ_act · BCE(act_logits, act_target)
+          + λ_doa · MSE(doa_pred, doa_target) · activity_mask / active_count
 
-    The minimum-loss permutation is selected; all three terms share the same
-    permutation assignment.  Huber delta = 0.5 m (50 cm tolerance).
+    The minimum-loss permutation is selected; both terms share the same assignment.
 
     Args:
-        lambda_act  : weight for activity BCE term   (default 1.0)
-        lambda_doa  : weight for DOA MSE term        (default 1.0)
-        lambda_dist : weight for distance Huber term (default 0.5)
+        lambda_act : weight for activity BCE term (default 1.0)
+        lambda_doa : weight for DOA MSE term      (default 1.0)
     """
 
     _PERMS = [(0, 1), (1, 0)]   # all permutations for N_tracks=2
 
     def __init__(
         self,
-        lambda_act:  float = 1.0,
-        lambda_doa:  float = 1.0,
-        lambda_dist: float = 0.5,
+        lambda_act: float = 1.0,
+        lambda_doa: float = 1.0,
     ) -> None:
         super().__init__()
-        self.lambda_act  = lambda_act
-        self.lambda_doa  = lambda_doa
-        self.lambda_dist = lambda_dist
-        self.huber = nn.HuberLoss(reduction='none', delta=0.5)  # delta = 0.5 m
+        self.lambda_act = lambda_act
+        self.lambda_doa = lambda_doa
 
     def forward(
         self,
@@ -80,26 +72,23 @@ class SpatialPITLoss(nn.Module):
     ) -> Tuple[torch.Tensor, dict]:
         """
         Args:
-            pred    : ``{'doa': (B,T,N,3), 'activity': (B,T,N), 'distance': (B,T,N)}``
+            pred    : ``{'doa': (B,T,N,3), 'activity': (B,T,N)}``
             targets : same keys, same shapes
 
         Returns:
             (total_loss, parts_dict)
-            parts_dict keys: loss, loss_act, loss_doa, loss_dist
+            parts_dict keys: loss, loss_act, loss_doa
         """
-        pred_doa  = pred['doa']
-        pred_act  = pred['activity']
-        pred_dist = pred['distance']
-        tgt_doa   = targets['doa']
-        tgt_act   = targets['activity']
-        tgt_dist  = targets['distance']
+        pred_doa = pred['doa']
+        pred_act = pred['activity']
+        tgt_doa  = targets['doa']
+        tgt_act  = targets['activity']
 
         best_total, best_parts = None, None
 
         for pi, pj in self._PERMS:
-            pd = torch.stack([pred_doa[:, :, pi],  pred_doa[:, :, pj]],  dim=2)
-            pa = torch.stack([pred_act[:, :, pi],  pred_act[:, :, pj]],  dim=2)
-            pr = torch.stack([pred_dist[:, :, pi], pred_dist[:, :, pj]], dim=2)
+            pd = torch.stack([pred_doa[:, :, pi], pred_doa[:, :, pj]], dim=2)
+            pa = torch.stack([pred_act[:, :, pi], pred_act[:, :, pj]], dim=2)
 
             act_loss = F.binary_cross_entropy_with_logits(pa, tgt_act)
 
@@ -107,31 +96,24 @@ class SpatialPITLoss(nn.Module):
             n_active = mask.sum().clamp(min=1)
             doa_loss = ((pd - tgt_doa).pow(2) * mask).sum() / (n_active * 3)
 
-            n_dist    = tgt_act.sum().clamp(min=1)
-            dist_loss = (
-                self.huber(pr / 100.0, tgt_dist / 100.0) * tgt_act
-            ).sum() / n_dist
-
             total = (
-                self.lambda_act  * act_loss
-                + self.lambda_doa  * doa_loss
-                + self.lambda_dist * dist_loss
+                self.lambda_act * act_loss
+                + self.lambda_doa * doa_loss
             )
 
             if best_total is None or total < best_total:
                 best_total = total
                 best_parts = {
-                    'loss':      total,
-                    'loss_act':  act_loss.detach(),
-                    'loss_doa':  doa_loss.detach(),
-                    'loss_dist': dist_loss.detach(),
+                    'loss':     total,
+                    'loss_act': act_loss.detach(),
+                    'loss_doa': doa_loss.detach(),
                 }
 
         return best_total, best_parts
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# HNetGRU-based Loss (dMOTP + dMOTA + distance extension)
+# HNetGRU-based Loss (dMOTP + dMOTA)
 # ══════════════════════════════════════════════════════════════════════════════
 
 class SpatialHNetLoss(nn.Module):
@@ -139,16 +121,12 @@ class SpatialHNetLoss(nn.Module):
     Spatial SELD loss using a pre-trained HNetGRU for soft source assignment.
 
     DOA + activity: dMOTP and dMOTA losses via frozen ``HNetGRU``.
-    Distance      : Huber loss on HNet-matched tracks (active frames only),
-                    weighted by the HNet assignment confidence matrix.
-
     The ``HNetGRU`` is loaded from ``hnet_ckpt`` and **frozen** during training.
 
     Args:
         hnet_ckpt   : path to a ``HNetGRU(max_len=N_tracks)`` state-dict file.
         lambda_act  : weight for activity BCE term.
         lambda_doa  : weight for dMOTP term (named consistently with PIT loss).
-        lambda_dist : weight for Huber distance term.
         dmota_wt    : weight for dMOTA term relative to dMOTP.
         dmotp_wt    : scalar multiplier for dMOTP loss.
         ids_wt      : IDS penalty weight inside dMOTA.
@@ -161,14 +139,13 @@ class SpatialHNetLoss(nn.Module):
 
     def __init__(
         self,
-        hnet_ckpt:   str,
-        lambda_act:  float = 1.0,
-        lambda_doa:  float = 1.0,
-        lambda_dist: float = 0.5,
-        dmota_wt:    float = 1.0,
-        dmotp_wt:    float = 1.0,
-        ids_wt:      float = 1.0,
-        n_tracks:    int   = 2,
+        hnet_ckpt:  str,
+        lambda_act: float = 1.0,
+        lambda_doa: float = 1.0,
+        dmota_wt:   float = 1.0,
+        dmotp_wt:   float = 1.0,
+        ids_wt:     float = 1.0,
+        n_tracks:   int   = 2,
     ) -> None:
         super().__init__()
 
@@ -187,14 +164,12 @@ class SpatialHNetLoss(nn.Module):
         for p in self.hnet.parameters():
             p.requires_grad = False
 
-        self.lambda_act  = lambda_act
-        self.lambda_doa  = lambda_doa
-        self.lambda_dist = lambda_dist
-        self.dmota_wt    = dmota_wt
-        self.dmotp_wt    = dmotp_wt
-        self.ids_wt      = ids_wt
-        self.n_tracks    = n_tracks
-        self.huber       = nn.HuberLoss(reduction='none', delta=0.5)
+        self.lambda_act = lambda_act
+        self.lambda_doa = lambda_doa
+        self.dmota_wt   = dmota_wt
+        self.dmotp_wt   = dmotp_wt
+        self.ids_wt     = ids_wt
+        self.n_tracks   = n_tracks
 
     def forward(
         self,
@@ -203,19 +178,17 @@ class SpatialHNetLoss(nn.Module):
     ) -> Tuple[torch.Tensor, dict]:
         """
         Args:
-            pred    : ``{'doa': (B,T,N,3), 'activity': (B,T,N), 'distance': (B,T,N)}``
+            pred    : ``{'doa': (B,T,N,3), 'activity': (B,T,N)}``
             targets : same keys, same shapes
 
         Returns:
             (total_loss, parts_dict)
-            parts_dict keys: loss, loss_dmotp, loss_dmota, loss_act, loss_dist
+            parts_dict keys: loss, loss_dmotp, loss_dmota, loss_act
         """
-        pred_doa  = pred['doa']       # (B, T, N, 3)
-        pred_act  = pred['activity']  # (B, T, N)
-        pred_dist = pred['distance']  # (B, T, N)
-        tgt_doa   = targets['doa']    # (B, T, N, 3)
-        tgt_act   = targets['activity']
-        tgt_dist  = targets['distance']
+        pred_doa = pred['doa']        # (B, T, N, 3)
+        pred_act = pred['activity']   # (B, T, N)
+        tgt_doa  = targets['doa']     # (B, T, N, 3)
+        tgt_act  = targets['activity']
 
         B, T, N, _ = pred_doa.shape
         BT = B * T
@@ -265,18 +238,10 @@ class SpatialHNetLoss(nn.Module):
             (da_activity > 0.5).float(),
         )
 
-        # ── Distance Huber weighted by assignment matrix ───────────────────
-        # da_mat[t, i, j] = assignment weight: pred track i → target track j
-        pr_exp  = pred_dist.reshape(BT, N, 1).expand(BT, N, N) / 100.0   # pred i
-        tgt_exp = tgt_dist.reshape(BT, 1, N).expand(BT, N, N) / 100.0    # tgt  j
-        huber_mat = self.huber(pr_exp, tgt_exp)                            # (BT, N, N)
-        dist_loss = (huber_mat * da_mat).sum() / (da_mat.sum() + _EPS)
-
         total = (
-            self.lambda_doa  * dmotp
-            + self.dmota_wt  * dmota
-            + self.lambda_act  * act_loss
-            + self.lambda_dist * dist_loss
+            self.lambda_doa * dmotp
+            + self.dmota_wt * dmota
+            + self.lambda_act * act_loss
         )
 
         parts = {
@@ -284,6 +249,5 @@ class SpatialHNetLoss(nn.Module):
             'loss_dmotp': dmotp.detach(),
             'loss_dmota': dmota.detach(),
             'loss_act':   act_loss.detach(),
-            'loss_dist':  dist_loss.detach(),
         }
         return total, parts

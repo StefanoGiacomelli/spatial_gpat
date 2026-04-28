@@ -4,7 +4,7 @@ test_min_size_neural-srp.py — Binary search for minimum input window size
 =======================================================================
 Empirically determines the smallest T_samples accepted by:
   1. NeuralSRPEncoder (encoder only)
-  2. SpatialSRPModel  (encoder + DOA/activity/distance heads)
+  2. SpatialSRPModel  (encoder + DOA/activity heads)
 
 for both eval-mode (forward only) and train-mode (forward + backward pass).
 
@@ -172,11 +172,9 @@ def _check_full_eval(T: int, cfg: dict) -> bool:
         B, N = cfg['batch_size'], cfg['n_tracks']
         assert pred['doa'].shape      == (B, expected_T, N, 3)
         assert pred['activity'].shape == (B, expected_T, N)
-        assert pred['distance'].shape == (B, expected_T, N)
         return (
             _is_finite(pred['doa'])
             and _is_finite(pred['activity'])
-            and _is_finite(pred['distance'])
         )
     except Exception:
         return False
@@ -187,7 +185,7 @@ def _check_full_train(T: int, cfg: dict) -> bool:
         model = _build_full_model(cfg).train()
         wav, mic_pos = _synthetic_inputs(T, cfg)
         pred = model(wav, mic_pos)
-        loss = pred['doa'].sum() + pred['activity'].sum() + pred['distance'].sum()
+        loss = pred['doa'].sum() + pred['activity'].sum()
         loss.backward()
         for p in model.parameters():
             if p.grad is not None and not _is_finite(p.grad):

@@ -281,6 +281,7 @@ class TrackTransformer(nn.Module):
         dropout:         float          = 0.0,
         d_input:         Optional[int]  = None,
         pe_enable:       bool           = False,
+        pe_max_len:      int            = 2048,
         pe_type:         str            = 't',
         pe_dropout:      float          = 0.0,
     ):
@@ -295,7 +296,8 @@ class TrackTransformer(nn.Module):
                            if d_in != d_model else nn.Identity())
 
         # Optional positional encoding (expects (B, C, T) format internally)
-        self.pe = (PositionalEncoder(d_model, pe_type=pe_type, dropout=pe_dropout)
+        self.pe = (PositionalEncoder(d_model, max_len=pe_max_len,
+                                     pe_type=pe_type, dropout=pe_dropout)
                    if pe_enable else None)
 
         # One independent encoder per track

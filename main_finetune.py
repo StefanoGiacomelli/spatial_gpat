@@ -462,6 +462,7 @@ def _run_experiment(
 
     # 9. Test with best checkpoint ─────────────────────────────────────────────
     trainer.test(model, dm, ckpt_path='best')
+    wb_logger.experiment.finish()
 
     # 10. Remove last.ckpt ────────────────────────────────────────────────────
     last_path = exp_dir / 'last.ckpt'

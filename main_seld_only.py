@@ -100,11 +100,11 @@ from datasets.utils import SELDDataset                                # noqa: E4
 
 SEED             = 42
 VAL_FRACTION     = 0.2
-EFFECTIVE_BATCH  = 16
+EFFECTIVE_BATCH  = 32
 
-_DEFAULT_EPOCHS      = 100
+_DEFAULT_EPOCHS      = 200
 _DEFAULT_BATCH_SIZE  = 4
-_DEFAULT_LR          = 1e-3
+_DEFAULT_LR          = 3e-4
 _DEFAULT_PATIENCE    = 30
 _DEFAULT_NUM_WORKERS = 4
 _DEFAULT_WINDOW_S    = 10.0
@@ -231,9 +231,11 @@ def _parse_args():
                         'filter_checkpoint; keys not matching StandaloneSELD are dropped).')
 
     # ── Training hyperparams ──────────────────────────────────────────────────
-    p.add_argument('--epochs',       type=int,   default=_DEFAULT_EPOCHS)
-    p.add_argument('--batch-size',   type=int,   default=_DEFAULT_BATCH_SIZE)
-    p.add_argument('--lr',           type=float, default=_DEFAULT_LR)
+    p.add_argument('--epochs',            type=int,   default=_DEFAULT_EPOCHS)
+    p.add_argument('--batch-size',        type=int,   default=_DEFAULT_BATCH_SIZE)
+    p.add_argument('--lr',                type=float, default=_DEFAULT_LR)
+    p.add_argument('--lr-warmup-epochs',  type=int,   default=5,
+                   help='Linear warmup epochs before cosine annealing kicks in.')
     p.add_argument('--patience',     type=int,   default=_DEFAULT_PATIENCE,
                    help='EarlyStopping patience in epochs (0 = disabled).')
     p.add_argument('--limit-batches', type=int,  default=0,
@@ -307,8 +309,7 @@ _TRAINING_DEFAULTS = {
     'focal_gamma':      0.0,
     'pos_weight_max':   20.0,
     'angle_thresh':     20.0,
-    'lr_reduce_factor': 0.75,
-    'lr_patience':      5,
+    'lr_warmup_epochs': 5,
     'lr_min':           1e-6,
 }
 
@@ -333,10 +334,11 @@ def _build_cfg(exp_yaml_path: Path, args, starss_root: Path, tau_root: Path) -> 
     for k, v in _TRAINING_DEFAULTS.items():
         train_cfg.setdefault(k, v)
 
-    # 2. CLI always wins for these three
-    train_cfg['epochs']     = args.epochs
-    train_cfg['batch_size'] = args.batch_size
-    train_cfg['lr']         = args.lr
+    # 2. CLI always wins for these keys
+    train_cfg['epochs']           = args.epochs
+    train_cfg['batch_size']       = args.batch_size
+    train_cfg['lr']               = args.lr
+    train_cfg['lr_warmup_epochs'] = args.lr_warmup_epochs
 
     dataset_mode = train_cfg.get('dataset_mode', 'STARSS23')
 
@@ -567,6 +569,7 @@ def _run_experiment(
 
     # 11. Test on both STARSS23 + TAU-NIGENS
     trainer.test(module, test_dm, ckpt_path='best')
+    wb_logger.experiment.finish()
 
     # 12. Remove last.ckpt
     last_path = exp_dir / 'last.ckpt'
