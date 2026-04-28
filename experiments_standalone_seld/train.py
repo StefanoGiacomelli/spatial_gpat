@@ -275,27 +275,36 @@ class StandaloneSELDModule(L.LightningModule):
     # ------------------------------------------------------------------
 
     def configure_optimizers(self):
-        """Adam + ReduceLROnPlateau (mode='min', monitors val_seld_score)."""
-        train_cfg = self.hparams['cfg'].get('training', {})
-        lr        = float(train_cfg.get('lr', 1e-3))
-        factor    = float(train_cfg.get('lr_reduce_factor', 0.75))
-        patience  = int(  train_cfg.get('lr_patience', 5))
-        lr_min    = float(train_cfg.get('lr_min', 1e-6))
+        """Adam + linear warmup + cosine annealing."""
+        train_cfg     = self.hparams['cfg'].get('training', {})
+        lr            = float(train_cfg.get('lr', 1e-3))
+        lr_min        = float(train_cfg.get('lr_min', 1e-6))
+        warmup_epochs = int(  train_cfg.get('lr_warmup_epochs', 5))
+        total_epochs  = self.trainer.max_epochs
 
         params    = [p for p in self.model.parameters() if p.requires_grad]
-        optimizer = torch.optim.Adam(params, lr=lr)
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer = torch.optim.AdamW(params, lr=lr, weight_decay=1e-2)
+
+        warmup = torch.optim.lr_scheduler.LinearLR(
             optimizer,
-            mode     = 'min',
-            factor   = factor,
-            patience = patience,
-            min_lr   = lr_min,
+            start_factor = 1e-3,
+            end_factor   = 1.0,
+            total_iters  = max(warmup_epochs, 1),
+        )
+        cosine = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max   = max(total_epochs - warmup_epochs, 1),
+            eta_min = lr_min,
+        )
+        scheduler = torch.optim.lr_scheduler.SequentialLR(
+            optimizer,
+            schedulers = [warmup, cosine],
+            milestones = [warmup_epochs],
         )
         return {
             'optimizer':    optimizer,
             'lr_scheduler': {
                 'scheduler': scheduler,
-                'monitor':   'val_seld_score',
                 'interval':  'epoch',
                 'frequency': 1,
             },

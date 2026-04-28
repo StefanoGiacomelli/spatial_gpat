@@ -1,38 +1,35 @@
 """
-StandaloneSELDModel — Dual-Branch SELD without GP-AT Backbone
-==============================================================
-Standalone SELD model derived from the best NAS-SELD architecture
-(3× ResNetBlock early, 1× TrackTransformer late, 1× BiGRU smoothing).
+StandaloneSELDModel v2 — Conformer + TCN Dual-Branch SELD
+==========================================================
+Standalone SELD model with an improved architecture:
 
-Two architecturally symmetric branches process the same spectrogram input:
+  * Early stage  : CNN freq-reduction frontend (2× ResNetBlock + MSCA, stride=(1,2))
+                   followed by a ConformerBlock stack (global self-attention +
+                   local depthwise conv) → full temporal context over the clip.
+  * Late stage   : TrackTransformer (per-track independent self-attention).
+  * Smoother     : Temporal Convolutional Network (TCN), applied per-track with
+                   shared weights — faster than BiGRU on all hardware.
+  * Optional CrossStitching between SED and DOA branches at:
+      - post-early  : (B, T, d_model)
+      - post-late   : (B, T, n_tracks, d_model)  [flattened for CS, then restored]
 
-  * ``sed_branch`` — produces activity logits (B, T, N_tracks, N_classes)
-  * ``doa_branch`` — produces tanh-bounded DOA vectors (B, T, N_tracks, N_classes, 3)
-
-Each branch has its own InstanceNorm layers, ResNet/TT/GRU weights, and head.
-The ``SpectralProcessor`` is shared (parameter-free STFT).
-
-Optional cross-stitching (configurable) between the two branches at:
-  * post-early  — 4D tensors (B, 64, T, F),  CrossStitching(n_channels=64)
-  * post-late   — 3D tensors (B, T, 256),     CrossStitching(n_channels=256)
-                  (requires .transpose(1,2) wrapper since C is at dim 2)
-
-Data flow
----------
+Data flow (per branch)
+----------------------
 .. code-block::
 
-    x: (B, n_mics, T_samples) → resample → SpectralProcessor → S: (B, 11, T, F)
-
-    SED branch:   S → norm_mag/phase/iv → early (3× ResNet) → [cs_early] →
-                  late (TT, freq mean-pool) → [cs_late] → smoother (BiGRU) →
-                  head_sed → act_logits: (B, T, N, C)
-
-    DOA branch:   S → norm_mag/phase/iv → early (3× ResNet) → [cs_early] →
-                  late (TT, freq mean-pool) → [cs_late] → smoother (BiGRU) →
-                  head_doa → tanh → doa_tanh: (B, T, N, C, 3)
-
-Loss: single tPITLoss — act_logits (from SED branch) and doa_tanh (from DOA
-branch) passed together; gradient flows to the respective branch only.
+    x: (B, n_mics, T_samples)
+      → [resample if needed]
+      → SpectralProcessor (shared, parameter-free)
+      → S: (B, C_in, T, F)       C_in = 11 for FOA (8 mag+phase + 3 IV)
+      → InstanceNorm (per branch)
+      → _ConformerEarlyStage     → (B, T, d_model)
+      → [cs_early]
+      → TrackTransformer         → (B, T, n_tracks, d_model)
+      → [cs_late]
+      → per-track TCN smoother   → (B, T, n_tracks, d_smooth)
+      → [optional projection]
+      → head                     → (B, T, n_tracks, n_classes)    [SED]
+                                 → (B, T, n_tracks, n_classes, 3) [DOA]
 
 Author
 ------
@@ -40,7 +37,8 @@ Stefano Giacomelli, Ph.D. candidate
 DISIM Department — University of L'Aquila
 """
 
-from typing import List, Optional, Tuple
+import math
+from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -50,107 +48,184 @@ from spatial_modules import (
     SpectralProcessor,
     BiGRU,
     ResNetBlock,
-    ConvBlock,
+    ConformerBlock,
+    PositionalEncoder,
     TrackTransformer,
     CrossStitching,
+    TCN,
 )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# BUILDER HELPERS  (adapted from experiments_nas_seld/nas_model.py)
+# INTERNAL MODULES
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _channel_schedule(n_layers: int, out_ch: int) -> List[int]:
-    """Progressive halving schedule for early-stage channel counts.
+class _ConformerEarlyStage(nn.Module):
+    """CNN frequency-reduction frontend + ConformerBlock stack.
 
-    n=1 → [out_ch]
-    n=2 → [2*out_ch, out_ch]
-    n=3 → [4*out_ch, 2*out_ch, out_ch]
+    Pipeline:
+        (B, C_in, T, F)
+          → ResNetBlock[MSCA, stride=(1,2)] ×2   → (B, d_model, T, F//4)
+          → AdaptiveAvgPool2d(None, 4)            → (B, d_model, T, 4)
+          → Conv2d depthwise(1×4)                 → (B, d_model, T)
+          → PositionalEncoder (sinusoidal, T)     → (B, d_model, T)
+          → permute                               → (B, T, d_model)
+          → ConformerBlock × n_conf_layers        → (B, T, d_model)
     """
-    return [out_ch * (2 ** (n_layers - 1 - i)) for i in range(n_layers)]
+
+    def __init__(
+        self,
+        in_channels:    int,
+        d_model:        int,
+        n_conf_layers:  int,
+        n_heads:        int,
+        ffn_expansion:  int   = 4,
+        conv_kernel:    int   = 31,
+        dropout:        float = 0.0,
+        use_msca:       bool  = True,
+        msca_reduction: int   = 4,
+        pe_max_len:     int   = 2048,
+    ):
+        super().__init__()
+        d_mid = max(d_model // 2, 1)
+
+        # Two strided ResNetBlocks collapse frequency: F → F//2 → F//4
+        self.cnn = nn.ModuleList([
+            ResNetBlock(
+                in_channels    = in_channels,
+                out_channels   = d_mid,
+                stride         = (1, 2),
+                use_msca       = use_msca,
+                msca_reduction = msca_reduction,
+                dropout        = 0.0,
+            ),
+            ResNetBlock(
+                in_channels    = d_mid,
+                out_channels   = d_model,
+                stride         = (1, 2),
+                use_msca       = use_msca,
+                msca_reduction = msca_reduction,
+                dropout        = 0.0,
+            ),
+        ])
+        # Pool to 4 frequency subbands, then project with learned per-channel weights
+        self.freq_pool = nn.AdaptiveAvgPool2d((None, 4))
+        self.freq_proj = nn.Conv2d(d_model, d_model, kernel_size=(1, 4),
+                                   groups=d_model, bias=True)
+
+        # Sinusoidal PE along T before the Conformer stack
+        self.pe = PositionalEncoder(d_model, max_len=pe_max_len, pe_type='t')
+
+        self.conformer = nn.ModuleList([
+            ConformerBlock(d_model, n_heads, ffn_expansion, conv_kernel, dropout)
+            for _ in range(n_conf_layers)
+        ])
+
+        self.out_channels = d_model   # exposed for downstream sizing
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x: (B, C_in, T, F)
+        for blk in self.cnn:
+            x = blk(x)                             # (B, d_model, T, F//4)
+        x = self.freq_pool(x)                      # (B, d_model, T, 4)
+        x = self.freq_proj(x).squeeze(-1)          # (B, d_model, T)
+        x = self.pe(x)                             # (B, d_model, T) — PE along T
+        x = x.permute(0, 2, 1)                     # (B, T, d_model)
+        for blk in self.conformer:
+            x = blk(x)                             # (B, T, d_model)
+        return x
 
 
-def _build_spatial_early(cfg: dict, in_channels: int) -> Tuple[nn.ModuleList, int]:
-    """Build a bottleneck stack of spatial early-feature modules."""
-    typ      = cfg.get('type', 'resnet_block')
-    n_layers = cfg.get('n_layers', 3)
-    out_ch   = cfg.get('out_channels', 64)
-    schedule = _channel_schedule(n_layers, out_ch)
-    modules  = nn.ModuleList()
-    c_in     = in_channels
+# ══════════════════════════════════════════════════════════════════════════════
+# BUILDER HELPERS
+# ══════════════════════════════════════════════════════════════════════════════
 
-    for ch_out in schedule:
-        if typ == 'convblock':
-            m = ConvBlock(
-                in_channels  = c_in,
-                out_channels = ch_out,
-                kernel_size  = tuple(cfg.get('kernel_size', [3, 3])),
-                pool_size    = cfg.get('pool_size', 1),
-                dropout      = cfg.get('dropout', 0.0),
-            )
-        elif typ == 'resnet_block':
-            m = ResNetBlock(
-                in_channels    = c_in,
-                out_channels   = ch_out,
-                stride         = tuple(cfg.get('stride', [1, 1])),
-                use_msca       = cfg.get('use_msca', False),
-                msca_reduction = cfg.get('msca_reduction', 4),
-                dropout        = cfg.get('dropout', 0.0),
-            )
-        else:
-            raise ValueError(f'[StandaloneSELD] Unknown spatial_early type: {typ!r}')
-        modules.append(m)
-        c_in = ch_out
-
-    return modules, out_ch
+def _build_spatial_early(
+    cfg: dict,
+    in_channels: int,
+) -> Tuple[_ConformerEarlyStage, int]:
+    """Build the CNN-Conformer early stage. Returns (module, d_model)."""
+    typ = cfg.get('type', 'conformer')
+    if typ != 'conformer':
+        raise ValueError(
+            f'[StandaloneSELD] spatial_early.type must be "conformer", got {typ!r}.'
+        )
+    d_model = cfg.get('d_model', 128)
+    module  = _ConformerEarlyStage(
+        in_channels    = in_channels,
+        d_model        = d_model,
+        n_conf_layers  = cfg.get('n_conf_layers', 4),
+        n_heads        = cfg.get('n_heads', 4),
+        ffn_expansion  = cfg.get('ffn_expansion', 4),
+        conv_kernel    = cfg.get('conv_kernel', 31),
+        dropout        = cfg.get('dropout', 0.0),
+        use_msca       = cfg.get('use_msca', True),
+        msca_reduction = cfg.get('msca_reduction', 4),
+        pe_max_len     = cfg.get('pe_max_len', 2048),
+    )
+    return module, d_model
 
 
 def _build_spatial_late(
     cfg: dict,
-    in_channels: int,
-) -> Tuple[nn.ModuleList, int, bool]:
-    """Build the spatial late-feature module stack.
-
-    Returns (modules, out_channels, is_transformer).
-    """
-    typ      = cfg.get('type', 'track_transformer')
-    n_layers = cfg.get('n_layers', 1)
-    modules  = nn.ModuleList()
-
-    if typ == 'track_transformer':
-        d_model  = cfg.get('d_model', 128)
-        n_heads  = cfg.get('n_heads', 4)
-        n_tracks = cfg.get('n_tracks', 2)
-        modules.append(TrackTransformer(
-            d_model    = d_model,
-            n_heads    = n_heads,
-            n_tracks   = n_tracks,
-            num_layers = n_layers,
-            d_input    = in_channels,
-        ))
-        return modules, n_tracks * d_model, True
-    else:
-        raise ValueError(f'[StandaloneSELD] Unsupported spatial_late type: {typ!r}. '
-                         'Only track_transformer is supported in StandaloneSELDModel.')
-
-
-def _build_track_smoother(cfg: dict, in_dim: int) -> Tuple[nn.Module, int]:
-    """Build a BiGRU track smoother."""
-    typ = cfg.get('type', 'bigru')
-    if typ != 'bigru':
-        raise ValueError(f'[StandaloneSELD] Unsupported track_smoothing type: {typ!r}. '
-                         'Only bigru is supported in StandaloneSELDModel.')
-    hidden   = cfg.get('hidden_size', 256)
-    n_layers = cfg.get('n_layers', 1)
-    return (
-        BiGRU(
-            in_size     = in_dim,
-            hidden_size = hidden,
-            num_layers  = n_layers,
-            dropout     = cfg.get('dropout', 0.0),
-        ),
-        hidden,
+    d_in: int,
+) -> Tuple[TrackTransformer, int, int]:
+    """Build the TrackTransformer late stage. Returns (module, n_tracks, d_model)."""
+    typ = cfg.get('type', 'track_transformer')
+    if typ != 'track_transformer':
+        raise ValueError(
+            f'[StandaloneSELD] spatial_late.type must be "track_transformer", got {typ!r}.'
+        )
+    d_model  = cfg.get('d_model', 128)
+    n_tracks = cfg.get('n_tracks', 2)
+    module   = TrackTransformer(
+        d_model    = d_model,
+        n_heads    = cfg.get('n_heads', 4),
+        n_tracks   = n_tracks,
+        num_layers = cfg.get('n_layers', 2),
+        d_input    = d_in,
+        dropout    = cfg.get('dropout', 0.0),
+        pe_enable  = True,
+        pe_max_len = cfg.get('pe_max_len', 2048),
     )
+    return module, n_tracks, d_model
+
+
+def _build_track_smoother(
+    cfg: dict,
+    d_model: int,
+) -> Tuple[nn.Module, int]:
+    """Build the temporal smoother. Returns (module, d_out).
+
+    Supported types: 'tcn' (default), 'bigru' (ablation only).
+    d_model is the per-track dimension from the TrackTransformer.
+    """
+    typ = cfg.get('type', 'tcn')
+
+    if typ == 'tcn':
+        tcn_d  = cfg.get('d_model', d_model)   # default: same as TT d_model
+        module = TCN(
+            d_model     = tcn_d,
+            n_layers    = cfg.get('n_layers', 6),
+            kernel_size = cfg.get('kernel_size', 3),
+            dropout     = cfg.get('dropout', 0.0),
+        )
+        return module, module.out_dim
+
+    elif typ == 'bigru':
+        hidden = cfg.get('hidden_size', 256)
+        module = BiGRU(
+            in_size     = d_model,
+            hidden_size = hidden,
+            num_layers  = cfg.get('n_layers', 1),
+            dropout     = cfg.get('dropout', 0.0),
+        )
+        return module, hidden
+
+    else:
+        raise ValueError(
+            f'[StandaloneSELD] track_smoothing.type must be "tcn" or "bigru", got {typ!r}.'
+        )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -158,17 +233,14 @@ def _build_track_smoother(cfg: dict, in_dim: int) -> Tuple[nn.Module, int]:
 # ══════════════════════════════════════════════════════════════════════════════
 
 class StandaloneSELDBranch(nn.Module):
-    """
-    One complete SELD processing branch (SED or DOA).
+    """One complete SELD processing branch (SED or DOA).
 
-    Exposes four stage methods so StandaloneSELDModel can interleave
-    cross-stitching between branches:
-      * forward_norm(S)       → normalised spectrogram (B, C_in, T, F)
-      * forward_early(x)      → (B, C_early, T, F)
-      * forward_late(x)       → (B, T, D_late)
-      * forward_head(x)       → (B, T, N, C) or (B, T, N, C, 3)
-
-    forward(S) chains all four stages.
+    Exposes stage methods so StandaloneSELDModel can interleave cross-stitching:
+      * forward_norm(S)         → (B, C_in, T, F)   normalised spectrogram
+      * forward_early(x)        → (B, T, d_early)    CNN + Conformer (freq pooled)
+      * forward_late(x)         → (B, T, N, d_model) TrackTransformer
+      * forward_smoother(x)     → (B, T, N, d_smooth) per-track TCN
+      * forward_head(x)         → (B, T, N, C) or (B, T, N, C, 3)
     """
 
     def __init__(
@@ -179,63 +251,71 @@ class StandaloneSELDBranch(nn.Module):
         early_cfg:    dict,
         late_cfg:     dict,
         smoother_cfg: dict,
+        head_cfg:     dict,
         head_type:    str,
-        n_tracks:     int,
-        n_classes:    int,
     ):
         super().__init__()
 
-        self.n_mics       = n_mics
-        self.audio_format = audio_format
-        self.head_type    = head_type
+        n_tracks  = late_cfg.get('n_tracks', 2)
+        n_classes = head_cfg.get('n_classes', 13)
+        proj_dim  = head_cfg.get('proj_dim', None)
+
         self.n_tracks     = n_tracks
         self.n_classes    = n_classes
+        self.head_type    = head_type
+        self.audio_format = audio_format
 
-        # Per-group InstanceNorm — separate for each branch
+        # ── Per-group InstanceNorm (separate weights per branch) ──────────────
         self.norm_mag   = nn.InstanceNorm2d(n_mics, affine=True)
         self.norm_phase = nn.InstanceNorm2d(n_mics, affine=True)
         if audio_format == 'foa':
             self.norm_iv = nn.InstanceNorm2d(3, affine=True)
-        else:  # mic
+        else:
             n_pairs = n_mics * (n_mics - 1) // 2
             self.norm_gcc = nn.InstanceNorm2d(n_pairs, affine=True)
+        self._n_mics = n_mics
 
-        # Early modules
-        early_mods, c_early = _build_spatial_early(early_cfg, in_channels)
-        self.early = early_mods
-        self._c_early = c_early
+        # ── Early stage: CNN frontend + ConformerBlock stack ──────────────────
+        self.early, self._d_early = _build_spatial_early(early_cfg, in_channels)
 
-        # Late modules
-        late_mods, c_late, self._late_is_transformer = _build_spatial_late(
-            late_cfg, c_early
+        # ── Late stage: TrackTransformer ──────────────────────────────────────
+        self.late, self._n_tracks, self._d_model = _build_spatial_late(
+            late_cfg, self._d_early
         )
-        self.late  = late_mods
-        self._c_late = c_late  # = n_tracks * d_model for TrackTransformer
 
-        # Track smoother
-        smoother, d_out = _build_track_smoother(smoother_cfg, c_late)
-        self.smoother = smoother
-        self._d_out   = d_out
+        # ── Smoother: per-track TCN (shared weights across tracks) ────────────
+        self.smoother, self._d_smooth = _build_track_smoother(
+            smoother_cfg, self._d_model
+        )
 
-        # Output head
+        # ── Optional projection before head ───────────────────────────────────
+        head_in = self._d_smooth
+        if proj_dim is not None and proj_dim != self._d_smooth:
+            self.proj = nn.Sequential(nn.Linear(self._d_smooth, proj_dim), nn.GELU())
+            head_in = proj_dim
+        else:
+            self.proj = nn.Identity()
+
+        # ── Output head (applied per-track, per-class independently) ──────────
         if head_type == 'sed':
-            self.head = nn.Linear(d_out, n_tracks * n_classes)
-            nn.init.xavier_uniform_(self.head.weight)
-            nn.init.zeros_(self.head.bias)
+            self.head = nn.Linear(head_in, n_classes)
         elif head_type == 'doa':
-            self.head = nn.Linear(d_out, n_tracks * n_classes * 3)
-            nn.init.xavier_uniform_(self.head.weight)
-            nn.init.zeros_(self.head.bias)
+            self.head = nn.Linear(head_in, n_classes * 3)
         else:
             raise ValueError(f'[StandaloneSELDBranch] Unknown head_type: {head_type!r}')
+        nn.init.xavier_uniform_(self.head.weight)
+        nn.init.zeros_(self.head.bias)
+
+    # ── Stage methods ─────────────────────────────────────────────────────────
 
     def forward_norm(self, S: torch.Tensor) -> torch.Tensor:
         """Apply per-group InstanceNorm. S: (B, C_in, T, F) → same shape."""
-        C = self.n_mics
-        S_mag   = self.norm_mag(S[:, :C])
-        S_phase = self.norm_phase(S[:, C:2*C])
-        parts   = [S_mag, S_phase]
-        offset  = 2 * C
+        C = self._n_mics
+        parts = [
+            self.norm_mag(S[:, :C]),
+            self.norm_phase(S[:, C:2 * C]),
+        ]
+        offset = 2 * C
         if self.audio_format == 'foa':
             parts.append(self.norm_iv(S[:, offset:offset + 3]))
         else:
@@ -243,37 +323,38 @@ class StandaloneSELDBranch(nn.Module):
         return torch.cat(parts, dim=1)
 
     def forward_early(self, x: torch.Tensor) -> torch.Tensor:
-        """Run early ResNet stack. Returns (B, C_early, T, F)."""
-        for mod in self.early:
-            x = mod(x)
-        return x
+        """CNN frontend + Conformer. Returns (B, T, d_early)."""
+        return self.early(x)
 
     def forward_late(self, x: torch.Tensor) -> torch.Tensor:
-        """Run late TrackTransformer with freq mean-pooling. Returns (B, T, D_late)."""
-        # x: (B, C_early, T, F) → mean over F → (B, T, C_early)
-        B, C, T, Fq = x.shape
-        seq = x.mean(dim=3).permute(0, 2, 1)   # (B, T, C_early)
-        for mod in self.late:
-            out = mod(seq)                       # (B, T, n_tracks, d_model)
-            B2, T2, M, D = out.shape
-            seq = out.reshape(B2, T2, M * D)     # (B, T, n_tracks * d_model)
-        return seq   # (B, T, D_late = n_tracks * d_model)
+        """TrackTransformer. x: (B, T, d_early) → (B, T, n_tracks, d_model)."""
+        return self.late(x)
+
+    def forward_smoother(self, x: torch.Tensor) -> torch.Tensor:
+        """Per-track TCN with shared weights.
+        x: (B, T, n_tracks, d_model) → (B, T, n_tracks, d_smooth)
+        """
+        B, T, N, d = x.shape
+        x = x.reshape(B * N, T, d)    # treat each track as independent sequence
+        x = self.smoother(x)          # (B*N, T, d_smooth)
+        return x.reshape(B, T, N, -1) # (B, T, N, d_smooth)
 
     def forward_head(self, x: torch.Tensor) -> torch.Tensor:
-        """BiGRU smoother + head. Returns (B, T, N, C) or (B, T, N, C, 3)."""
-        x = self.smoother(x)    # (B, T, D_out)
-        B, T, _ = x.shape
-        N, C    = self.n_tracks, self.n_classes
-
+        """Optional projection + head.
+        x: (B, T, N, d_smooth) → (B, T, N, C) or (B, T, N, C, 3)
+        """
+        x = self.proj(x)   # Identity if no proj_dim configured
         if self.head_type == 'sed':
-            return self.head(x).view(B, T, N, C)
-        else:  # doa
-            return torch.tanh(self.head(x)).view(B, T, N, C, 3)
+            return self.head(x)   # (B, T, N, C)
+        else:
+            B, T, N, _ = x.shape
+            return torch.tanh(self.head(x)).reshape(B, T, N, self.n_classes, 3)
 
     def forward(self, S: torch.Tensor) -> torch.Tensor:
         x = self.forward_norm(S)
         x = self.forward_early(x)
         x = self.forward_late(x)
+        x = self.forward_smoother(x)
         return self.forward_head(x)
 
 
@@ -283,7 +364,7 @@ class StandaloneSELDBranch(nn.Module):
 
 class StandaloneSELDModel(nn.Module):
     """
-    Standalone dual-branch SELD model (no GP-AT backbone).
+    Standalone dual-branch SELD model v2 (Conformer early stage + TCN smoother).
 
     Args:
         cfg (dict): merged YAML config.
@@ -300,75 +381,93 @@ class StandaloneSELDModel(nn.Module):
     def __init__(self, cfg: dict):
         super().__init__()
 
-        in_cfg      = cfg['input']
-        se_cfg      = cfg.get('spatial_early', {})
-        sl_cfg      = cfg.get('spatial_late', {})
-        tss_cfg     = cfg.get('track_smoothing', {})
-        head_cfg    = cfg.get('heads', {})
-        cs_cfg      = cfg.get('cross_stitch', {})
-        data_cfg    = cfg.get('data', {})
+        in_cfg   = cfg['input']
+        data_cfg = cfg.get('data', {})
+        cs_cfg   = cfg.get('cross_stitch', {})
+        tss_cfg  = cfg.get('track_smoothing', {})
+        head_cfg = cfg.get('heads', {})
+
+        # Auto-compute PE max_len from sr / hop_length / window_s
+        _sr  = in_cfg['sr']
+        _hop = in_cfg.get('hop_length', _sr // 100)
+        _win = float(data_cfg.get('window_s', 10.0) or 10.0)
+        _pe_max_len = int(math.ceil(_win * _sr / _hop)) + 50
+
+        # Shallow copies so we can inject pe_max_len without mutating the original cfg
+        se_cfg = dict(cfg.get('spatial_early', {}))
+        sl_cfg = dict(cfg.get('spatial_late',  {}))
+        se_cfg['pe_max_len'] = _pe_max_len
+        sl_cfg['pe_max_len'] = _pe_max_len
 
         self.src_sr       = in_cfg['sr']
-        self.n_mics       = in_cfg.get('n_mics', 4)
-        self.audio_format = data_cfg.get('format', 'foa')
+        n_mics            = in_cfg.get('n_mics', 4)
+        audio_format      = data_cfg.get('format', 'foa')
+        self.audio_format = audio_format
 
-        _iv  = (self.audio_format == 'foa')
-        _gcc = (self.audio_format == 'mic')
-        n_pairs     = self.n_mics * (self.n_mics - 1) // 2
-        c_in_spat   = 2 * self.n_mics + (3 if _iv else n_pairs if _gcc else 0)
+        _iv  = (audio_format == 'foa')
+        _gcc = (audio_format == 'mic')
+        n_pairs    = n_mics * (n_mics - 1) // 2
+        c_in_spat  = 2 * n_mics + (3 if _iv else n_pairs if _gcc else 0)
 
-        n_tracks  = head_cfg.get('n_tracks', 2)
-        n_classes = head_cfg.get('n_classes', 13)
-
-        # ── Shared input processor (parameter-free STFT) ─────────────────────
+        # ── Shared spectral frontend (parameter-free STFT) ────────────────────
+        n_fft      = in_cfg.get('n_fft', 1024)
+        hop_length = in_cfg.get('hop_length', self.src_sr // 100)
         self.input_proc = SpectralProcessor(
-            n_fft       = in_cfg.get('n_fft', 512),
-            hop_length  = in_cfg.get('hop_length', 320),
+            n_fft       = n_fft,
+            hop_length  = hop_length,
             compute_iv  = _iv,
             compute_gcc = _gcc,
-            tau_max     = in_cfg.get('n_fft', 512) // 4,
+            tau_max     = n_fft // 4,
         )
 
         # ── Cross-stitch flags ────────────────────────────────────────────────
         self.cs_early_on = cs_cfg.get('cs_early_enabled', False)
-        self.cs_late_on  = cs_cfg.get('cs_late_enabled', False)
+        self.cs_late_on  = cs_cfg.get('cs_late_enabled',  False)
 
-        # ── Two branches ──────────────────────────────────────────────────────
+        # ── Two symmetric branches ────────────────────────────────────────────
         branch_kwargs = dict(
             in_channels  = c_in_spat,
-            n_mics       = self.n_mics,
-            audio_format = self.audio_format,
+            n_mics       = n_mics,
+            audio_format = audio_format,
             early_cfg    = se_cfg,
             late_cfg     = sl_cfg,
             smoother_cfg = tss_cfg,
-            n_tracks     = n_tracks,
-            n_classes    = n_classes,
+            head_cfg     = head_cfg,
         )
         self.sed_branch = StandaloneSELDBranch(head_type='sed', **branch_kwargs)
         self.doa_branch = StandaloneSELDBranch(head_type='doa', **branch_kwargs)
 
-        # ── Optional CrossStitching layers ───────────────────────────────────
-        # post-early: 4D tensors (B, C_early, T, F) — C at dim 1, native
-        # post-late:  3D tensors (B, T, D_late)     — requires .transpose(1,2)
-        c_early = self.sed_branch._c_early
-        d_late  = self.sed_branch._c_late
+        # ── CrossStitching layers ─────────────────────────────────────────────
+        # CS_EARLY operates on (B, T, d_early) via permute to (B, d_early, T)
+        # CS_LATE  operates on (B, T, N*d_model) flattened, via permute to (B, D, T)
+        d_early = self.sed_branch._d_early
+        n_tracks = self.sed_branch._n_tracks
+        d_model  = self.sed_branch._d_model
 
         if self.cs_early_on:
-            self.cs_early = CrossStitching(n_channels=c_early)
+            self.cs_early = CrossStitching(n_channels=d_early)
         if self.cs_late_on:
-            self.cs_late = CrossStitching(n_channels=d_late)
+            self.cs_late = CrossStitching(n_channels=n_tracks * d_model)
 
-        print(f'[StandaloneSELDModel] format={self.audio_format}  sr={self.src_sr}  '
-              f'n_mics={self.n_mics}  c_in={c_in_spat}')
-        print(f'[StandaloneSELDModel] early={se_cfg.get("type","resnet_block")}×'
-              f'{se_cfg.get("n_layers",3)}  out_ch={c_early}  '
-              f'late={sl_cfg.get("type","track_transformer")}×{sl_cfg.get("n_layers",1)}  '
-              f'd_late={d_late}')
-        print(f'[StandaloneSELDModel] smoother={tss_cfg.get("type","bigru")}×'
-              f'{tss_cfg.get("n_layers",1)}  hidden={tss_cfg.get("hidden_size",256)}')
-        print(f'[StandaloneSELDModel] cs_early={"on" if self.cs_early_on else "off"}  '
-              f'cs_late={"on" if self.cs_late_on else "off"}')
-        print(f'[StandaloneSELDModel] n_tracks={n_tracks}  n_classes={n_classes}')
+        # ── Diagnostic print ─────────────────────────────────────────────────
+        print(
+            f'[StandaloneSELDModel v2]'
+            f'  format={audio_format}  sr={self.src_sr}'
+            f'  n_mics={n_mics}  c_in={c_in_spat}'
+            f'  n_fft={n_fft}  hop={hop_length}'
+        )
+        print(
+            f'  early=conformer(CNN×2 + Conf×{se_cfg.get("n_conf_layers",4)})'
+            f'  d_model={d_early}'
+            f'  late=TrackTF×{sl_cfg.get("n_layers",2)}'
+            f'  n_tracks={n_tracks}  d_model={d_model}'
+        )
+        print(
+            f'  smoother={tss_cfg.get("type","tcn")}×{tss_cfg.get("n_layers",6)}'
+            f'  d_smooth={self.sed_branch._d_smooth}'
+            f'  cs_early={"on" if self.cs_early_on else "off"}'
+            f'  cs_late={"on" if self.cs_late_on else "off"}'
+        )
 
     def forward(
         self,
@@ -390,33 +489,44 @@ class StandaloneSELDModel(nn.Module):
         # Shared spectral input (parameter-free, same tensor for both branches)
         S = self.input_proc(x)   # (B, C_in, T, F)
 
-        # Stage 1: per-branch InstanceNorm
+        # ── Stage 1: per-branch InstanceNorm ─────────────────────────────────
         S_sed = self.sed_branch.forward_norm(S)
         S_doa = self.doa_branch.forward_norm(S)
 
-        # Stage 2: early feature extraction
-        feat_sed_e = self.sed_branch.forward_early(S_sed)   # (B, C_early, T, F)
-        feat_doa_e = self.doa_branch.forward_early(S_doa)   # (B, C_early, T, F)
+        # ── Stage 2: CNN frontend + Conformer → (B, T, d_early) ──────────────
+        e_sed = self.sed_branch.forward_early(S_sed)
+        e_doa = self.doa_branch.forward_early(S_doa)
 
-        # Optional cross-stitch post-early (4D, C at dim 1 — native)
+        # CS_EARLY: permute (B, T, d) → (B, d, T) for CrossStitching → back
         if self.cs_early_on:
-            feat_sed_e, feat_doa_e = self.cs_early(feat_sed_e, feat_doa_e)
-
-        # Stage 3: late feature extraction (freq pool + TrackTransformer)
-        feat_sed_l = self.sed_branch.forward_late(feat_sed_e)   # (B, T, D_late)
-        feat_doa_l = self.doa_branch.forward_late(feat_doa_e)   # (B, T, D_late)
-
-        # Optional cross-stitch post-late (3D: transpose to put C at dim 1)
-        if self.cs_late_on:
-            sed_t, doa_t = self.cs_late(
-                feat_sed_l.transpose(1, 2),   # (B, D_late, T)
-                feat_doa_l.transpose(1, 2),
+            e_sed_p, e_doa_p = self.cs_early(
+                e_sed.permute(0, 2, 1),
+                e_doa.permute(0, 2, 1),
             )
-            feat_sed_l = sed_t.transpose(1, 2)   # (B, T, D_late)
-            feat_doa_l = doa_t.transpose(1, 2)
+            e_sed = e_sed_p.permute(0, 2, 1)
+            e_doa = e_doa_p.permute(0, 2, 1)
 
-        # Stage 4: smoother + head
-        act_logits = self.sed_branch.forward_head(feat_sed_l)   # (B, T, N, C)
-        doa_tanh   = self.doa_branch.forward_head(feat_doa_l)   # (B, T, N, C, 3)
+        # ── Stage 3: TrackTransformer → (B, T, n_tracks, d_model) ────────────
+        l_sed = self.sed_branch.forward_late(e_sed)
+        l_doa = self.doa_branch.forward_late(e_doa)
+
+        # CS_LATE: flatten tracks → permute → CrossStitch → reshape back
+        if self.cs_late_on:
+            B, T, N, d = l_sed.shape
+            D = N * d
+            sed_cs, doa_cs = self.cs_late(
+                l_sed.reshape(B, T, D).permute(0, 2, 1),   # (B, D, T)
+                l_doa.reshape(B, T, D).permute(0, 2, 1),
+            )
+            l_sed = sed_cs.permute(0, 2, 1).reshape(B, T, N, d)
+            l_doa = doa_cs.permute(0, 2, 1).reshape(B, T, N, d)
+
+        # ── Stage 4: per-track TCN → (B, T, n_tracks, d_smooth) ──────────────
+        l_sed = self.sed_branch.forward_smoother(l_sed)
+        l_doa = self.doa_branch.forward_smoother(l_doa)
+
+        # ── Stage 5: optional projection + head ──────────────────────────────
+        act_logits = self.sed_branch.forward_head(l_sed)   # (B, T, N, C)
+        doa_tanh   = self.doa_branch.forward_head(l_doa)   # (B, T, N, C, 3)
 
         return act_logits, doa_tanh
