@@ -92,7 +92,7 @@ from datasets.datamodule import SELDDataModule, FinetuneDataModule    # noqa: E4
 from datasets.starss23 import STARSS23Dataset                         # noqa: E402
 from datasets.tau_nigens import TAUNIGENSDataset                      # noqa: E402
 from datasets.utils import SELDDataset                                # noqa: E402
-
+from dotenv import load_dotenv
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Constants
@@ -672,4 +672,5 @@ def main() -> None:
 
 
 if __name__ == '__main__':
+    load_dotenv()
     main()
