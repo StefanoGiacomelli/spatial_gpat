@@ -199,6 +199,7 @@ class StandaloneSELDModule(L.LightningModule):
         self.log('val/loss_tpit', loss,     on_epoch=True, sync_dist=True)
         self.log('val/loss_sed',  loss_sed, on_epoch=True, sync_dist=True)
         self.log('val/loss_doa',  loss_doa, on_epoch=True, sync_dist=True)
+        self.log('val_loss_tpit', loss,     on_epoch=True, sync_dist=True)
 
         self.metrics_val.update(act_logits, doa_tanh, tgt)
 

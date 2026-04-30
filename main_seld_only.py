@@ -232,7 +232,9 @@ def _parse_args():
 
     # ── Training hyperparams ──────────────────────────────────────────────────
     p.add_argument('--epochs',            type=int,   default=_DEFAULT_EPOCHS)
-    p.add_argument('--batch-size',        type=int,   default=_DEFAULT_BATCH_SIZE)
+    p.add_argument('--batch-size',        type=int,   default=None,
+                   help=f'Batch size. Overrides YAML value. Default: {_DEFAULT_BATCH_SIZE} '
+                        '(used only when YAML has no batch_size key).')
     p.add_argument('--lr',                type=float, default=_DEFAULT_LR)
     p.add_argument('--lr-warmup-epochs',  type=int,   default=5,
                    help='Linear warmup epochs before cosine annealing kicks in.')
@@ -240,8 +242,12 @@ def _parse_args():
                    help='EarlyStopping patience in epochs (0 = disabled).')
     p.add_argument('--limit-batches', type=int,  default=0,
                    help='Limit train/val/test batches per epoch (0 = disabled).')
-    p.add_argument('--window-s',     type=float, default=_DEFAULT_WINDOW_S)
-    p.add_argument('--hop-s',        type=float, default=_DEFAULT_HOP_S)
+    p.add_argument('--window-s',     type=float, default=None,
+                   help=f'Window duration (s). Overrides YAML. Default: {_DEFAULT_WINDOW_S} '
+                        '(used only when YAML has no window_s key).')
+    p.add_argument('--hop-s',        type=float, default=None,
+                   help=f'Hop duration (s). Overrides YAML. Default: {_DEFAULT_HOP_S} '
+                        '(used only when YAML has no hop_s key).')
     p.add_argument('--num-workers',  type=int,   default=_DEFAULT_NUM_WORKERS)
     p.add_argument('--accum-steps',  type=int,   default=0,
                    help='Gradient accumulation steps (0 = auto: ceil(16/batch_size)).')
@@ -304,13 +310,15 @@ def _print_state_table(exp_names: list, state: dict) -> None:
 # ══════════════════════════════════════════════════════════════════════════════
 
 _TRAINING_DEFAULTS = {
-    'lr':               _DEFAULT_LR,
-    'beta_sed':         0.6,
-    'focal_gamma':      0.0,
-    'pos_weight_max':   20.0,
-    'angle_thresh':     20.0,
-    'lr_warmup_epochs': 5,
-    'lr_min':           1e-6,
+    'lr':                  _DEFAULT_LR,
+    'beta_sed':            0.6,
+    'focal_gamma':         0.0,
+    'pos_weight_max':      20.0,
+    'angle_thresh':        20.0,
+    'lr_warmup_epochs':    5,
+    'lr_min':              1e-6,
+    'checkpoint_monitor':  'val_seld_score',
+    'checkpoint_mode':     'min',
 }
 
 
@@ -334,24 +342,33 @@ def _build_cfg(exp_yaml_path: Path, args, starss_root: Path, tau_root: Path) -> 
     for k, v in _TRAINING_DEFAULTS.items():
         train_cfg.setdefault(k, v)
 
-    # 2. CLI always wins for these keys
+    # 2. CLI always wins for epochs / lr / lr_warmup_epochs.
+    #    batch_size: CLI explicit → YAML → constant default.
     train_cfg['epochs']           = args.epochs
-    train_cfg['batch_size']       = args.batch_size
     train_cfg['lr']               = args.lr
     train_cfg['lr_warmup_epochs'] = args.lr_warmup_epochs
+    if args.batch_size is not None:
+        train_cfg['batch_size'] = args.batch_size
+    else:
+        train_cfg.setdefault('batch_size', _DEFAULT_BATCH_SIZE)
 
     dataset_mode = train_cfg.get('dataset_mode', 'STARSS23')
 
-    # 3. Data section
-    window_s = args.window_s if args.window_s > 0 else None
-    hop_s    = args.hop_s    if args.hop_s    > 0 else None
+    # 3. Data section.
+    #    window_s / hop_s: CLI explicit → YAML value → constant default.
     data_cfg = cfg.setdefault('data', {})
-    data_cfg.setdefault('format',       'foa')
-    data_cfg['window_s']    = window_s
-    data_cfg['hop_s']       = hop_s
+    data_cfg.setdefault('format', 'foa')
+    if args.window_s is not None:
+        data_cfg['window_s'] = args.window_s if args.window_s > 0 else None
+    else:
+        data_cfg.setdefault('window_s', _DEFAULT_WINDOW_S)
+    if args.hop_s is not None:
+        data_cfg['hop_s'] = args.hop_s if args.hop_s > 0 else None
+    else:
+        data_cfg.setdefault('hop_s', _DEFAULT_HOP_S)
     data_cfg['val_fraction'] = data_cfg.get('val_fraction', VAL_FRACTION)
-    data_cfg['val_seed']    = data_cfg.get('val_seed', SEED)
-    data_cfg['num_workers'] = args.num_workers
+    data_cfg['val_seed']     = data_cfg.get('val_seed', SEED)
+    data_cfg['num_workers']  = args.num_workers
 
     if dataset_mode == 'STARSS23':
         data_cfg['root_path'] = str(starss_root)
@@ -488,11 +505,14 @@ def _run_experiment(
     )
 
     # 6. Callbacks
+    ckpt_monitor = cfg['training'].get('checkpoint_monitor', 'val_seld_score')
+    ckpt_mode    = cfg['training'].get('checkpoint_mode',    'min')
+    ckpt_fname   = '{epoch:02d}_' + '{' + ckpt_monitor + ':.4f}'
     ckpt_cb = ModelCheckpoint(
         dirpath                 = str(exp_dir),
-        filename                = '{epoch:02d}_{val_seld_score:.4f}',
-        monitor                 = 'val_seld_score',
-        mode                    = 'min',
+        filename                = ckpt_fname,
+        monitor                 = ckpt_monitor,
+        mode                    = ckpt_mode,
         save_top_k              = 1,
         save_last               = True,
         verbose                 = True,
@@ -501,8 +521,8 @@ def _run_experiment(
     callbacks = [ckpt_cb]
     if args.patience > 0:
         callbacks.append(EarlyStopping(
-            monitor  = 'val_seld_score',
-            mode     = 'min',
+            monitor  = ckpt_monitor,
+            mode     = ckpt_mode,
             patience = args.patience,
             verbose  = True,
         ))

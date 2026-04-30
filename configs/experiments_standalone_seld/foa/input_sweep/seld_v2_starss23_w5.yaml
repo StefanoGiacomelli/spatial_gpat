@@ -1,0 +1,74 @@
+experiment:
+  name: seld_v2_starss23_w5
+  seed: 42
+
+input:
+  type:        spectral
+  sr:          24000
+  n_mics:      4
+  n_fft:       1024
+  hop_length:  240            # 10 ms frame shift
+  compute_iv:  true
+
+spatial_early:
+  type:           conformer
+  use_msca:       true
+  msca_reduction: 4
+  d_model:        128
+  n_conf_layers:  4
+  n_heads:        4
+  ffn_expansion:  4
+  conv_kernel:    31
+  dropout:        0.1
+
+spatial_late:
+  type:     track_transformer
+  n_layers: 2
+  d_model:  128
+  n_heads:  4
+  n_tracks: 3
+  dropout:  0.1
+
+track_smoothing:
+  type:        tcn
+  d_model:     128
+  n_layers:    6              # RF = 189 frames, window = 500 frames
+  kernel_size: 3
+  dropout:     0.1
+
+heads:
+  n_tracks:  3
+  n_classes: 13
+  proj_dim:  null
+
+cross_stitch:
+  cs_early_enabled: false
+  cs_late_enabled:  false
+
+training:
+  dataset_mode:     STARSS23
+  batch_size:       4         # T=500 frames; matches baseline memory footprint
+  beta_sed:         0.8
+  focal_gamma:      0.0
+  pos_weight_max:   20.0
+  angle_thresh:     20.0
+  weighted_sampler: false
+  lr:               3.0e-4
+  lr_warmup_epochs: 5
+  lr_min:           1.0e-5
+
+augmentation:
+  enabled:     true
+  p_rotate:    0.5
+  p_gain:      0.5
+  p_elevflip:  0.3
+  gain_min_db: -6.0
+  gain_max_db:  6.0
+
+data:
+  root_path:    data/STARSS23
+  window_s:     5.0
+  hop_s:        2.5           # 50% overlap
+  val_fraction: 0.2
+  val_seed:     42
+  num_workers:  4
