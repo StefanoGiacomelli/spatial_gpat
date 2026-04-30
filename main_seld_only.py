@@ -62,6 +62,8 @@ Stefano Giacomelli, Ph.D. candidate
 DISIM Department — University of L'Aquila
 """
 
+from dotenv import load_dotenv
+
 import atexit
 import json
 import signal

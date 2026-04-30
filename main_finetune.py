@@ -81,6 +81,8 @@ Author
 Stefano Giacomelli, Ph.D. candidate — DISIM, University of L'Aquila
 """
 
+from dotenv import load_dotenv
+
 import atexit
 import json
 import signal
