@@ -511,12 +511,6 @@ def _run_experiment(
         config   = cfg
     )
 
-    wb_logger = WandbLogger(
-        project  = 'spatial-gpat',
-        name     = exp_name,
-        config   = cfg,
-    )
-
     trainer_kwargs = dict(
         max_epochs              = cfg['training']['epochs'],
         callbacks               = callbacks,
