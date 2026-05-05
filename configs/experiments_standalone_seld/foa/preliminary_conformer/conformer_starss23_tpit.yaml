@@ -47,9 +47,9 @@ cross_stitch:
 
 training:
   dataset_mode:        STARSS23
-  epochs:           200
-  batch_size:       4
-  patience:         30
+  epochs:              50
+  batch_size:          8
+  patience:            30
   beta_sed:            0.8
   focal_gamma:         0.0
   pos_weight_max:      20.0
