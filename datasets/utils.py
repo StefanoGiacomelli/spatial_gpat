@@ -1,38 +1,27 @@
 """
 datasets/utils.py — Shared Utilities for the SELD Dataset Pipeline
 ===================================================================
-Consolidates three previously separate modules:
+SELDDataset
+    Abstract base class.  Handles windowing, Multi-ACCDOA target
+    construction, zero-padding, class-based oversampling, and collate_fn
+    for variable-length clips.  Subclasses implement ``_collect_clips``,
+    ``_parse_csv``, and the ``n_classes`` property.
 
-  SELDDataset (formerly seld_dataset.py)
-  ----------------------------------------
-  Abstract base class for all SELD datasets.  Handles windowing,
-  Multi-ACCDOA target construction, zero-padding, and collate_fn for
-  variable-length clips.  Subclasses implement ``_collect_clips``,
-  ``_parse_csv``, and the ``n_classes`` property.
+SELDAugment
+    FOA-only SELD data augmentation with 3 mutually exclusive techniques:
+    (A) 16 Patterns — Mazzon et al. foa_augmentations.pdf, Table 1
+    (B) Gain Scaling — g ~ U(gain_min, gain_max) on all 4 channels
+    (C) White Noise Injection — RMS-relative noise on all 4 channels
 
-  Target tensor convention
-  ~~~~~~~~~~~~~~~~~~~~~~~~
-  ``target : (T_mel, N_tracks, C_classes, 3)``
-  Each entry is an activity-coupled Cartesian DOA vector:
-      ``target[t, n, c, :] = [x, y, z]`` where
-      ``x = sin(az)*cos(el),  y = cos(az)*cos(el),  z = sin(el)``
-  and ``||[x,y,z]|| = 1`` iff the source is active, ``= 0`` iff silent.
-  Track slots are filled in ascending source_idx order; excess sources
-  (beyond N_tracks) are dropped.
+MixedSELDDataset
+    Concatenated STARSS23 + TAU-NIGENS2021 + TAU2019 under a unified
+    15-class schema.  Per-dataset class→unified remapping on-the-fly.
 
-  SELDAugment (formerly augment.py)
-  ------------------------------------
-  Format-aware SELD data augmentation on raw waveforms.  Supports FOA
-  (azimuth rotation, global gain, elevation flip with DOA target updates)
-  and MIC (global gain, per-channel gain, diffuse noise) formats.
-  Instantiated by the DataModules based on cfg['augmentation'].
-
-  MixedSELDDataset / compute_combined_class_counts (formerly mixed_seld_dataset.py)
-  -----------------------------------------------------------------------------------
-  Concatenated STARSS23 + TAU-NIGENS2021 dataset under a unified 13-class
-  schema (STARSS23 class indices).  TAU-NIGENS items (12 classes) are
-  zero-padded to (T, N, 13, 3) on-the-fly.  compute_combined_class_counts
-  tallies per-class frame counts across both datasets for weighted sampling.
+Target tensor convention
+    ``target : (T_mel, N_tracks, C_classes, 3)``
+    Active entry: ``[x, y, z]`` where
+        x = sin(az)*cos(el),  y = cos(az)*cos(el),  z = sin(el)
+    Silent entry: ``[0, 0, 0]``
 
 Author
 ------
@@ -42,22 +31,17 @@ DISIM Department — University of L'Aquila
 
 from __future__ import annotations
 
+import bisect
 import math
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import soundfile as sf
 import torch
+import torchaudio
 from torch.utils.data import Dataset
-
-# Type-only imports to avoid a circular dependency:
-# starss23.py and tau_nigens.py import SELDDataset from this module, so
-# importing STARSS23Dataset / TAUNIGENSDataset at runtime would create a cycle.
-if TYPE_CHECKING:
-    from .starss23   import STARSS23Dataset
-    from .tau_nigens import TAUNIGENSDataset
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -71,13 +55,14 @@ class SELDDataset(Dataset, ABC):
     Args:
         split        : 'train' | 'val' | 'test'
         orig_sr      : native sample rate of audio files (e.g. 24000)
-        model_sr     : model input sample rate after resampling (e.g. 32000)
+        model_sr     : model input sample rate (e.g. 32000)
         hop_length   : hop length in samples at *model_sr* (e.g. 320)
         n_tracks     : number of Multi-ACCDOA output tracks (e.g. 5)
         window_s     : window duration in seconds; None → full clip per item
-        hop_s        : window stride in seconds; None → equal to window_s (no overlap)
-        audio_format : 'foa' | 'mic'
-        augment      : optional SELDAugment instance; applied only during train split.
+        hop_s        : window stride in seconds; None → equal to window_s
+        output_sr    : if set, resample audio from orig_sr to output_sr before
+                       returning (e.g. TAU2019: orig_sr=48000, output_sr=24000)
+        augment      : optional SELDAugment instance
     """
 
     # CSV annotation temporal resolution
@@ -92,24 +77,29 @@ class SELDDataset(Dataset, ABC):
         n_tracks: int,
         window_s: Optional[float] = None,
         hop_s: Optional[float] = None,
-        audio_format: str = 'foa',
+        output_sr: Optional[int] = None,
         augment=None,
     ):
         super().__init__()
-        self.split        = split
-        self.orig_sr      = orig_sr
-        self.model_sr     = model_sr
-        self.hop_length   = hop_length
-        self.n_tracks     = n_tracks
-        self.audio_format = audio_format
-        self.augment      = augment
+        self.split      = split
+        self.orig_sr    = orig_sr
+        self.model_sr   = model_sr
+        self.hop_length = hop_length
+        self.n_tracks   = n_tracks
+        self.output_sr  = output_sr
+        self.augment    = augment
+
+        # Effective SR seen by the model frontend (after optional resample)
+        self._eff_sr = output_sr if output_sr is not None else orig_sr
 
         # ── Windowing ────────────────────────────────────────────────────────
         self.windowed = window_s is not None
         if self.windowed:
             self.window_samples = round(window_s * orig_sr)
             self.hop_samples    = round((hop_s if hop_s is not None else window_s) * orig_sr)
-            # T_mel is constant for all windows (based on fixed window duration)
+            # T_mel_window is invariant to output_sr:
+            # (window_samples * output_sr/orig_sr) * model_sr/output_sr
+            # = window_samples * model_sr / orig_sr
             n_window_at_model   = round(self.window_samples * model_sr / orig_sr)
             self.T_mel_window   = 1 + n_window_at_model // hop_length
         else:
@@ -117,15 +107,12 @@ class SELDDataset(Dataset, ABC):
             self.hop_samples    = None
             self.T_mel_window   = None
 
-        # ── mel frames per CSV frame (e.g. 10.0 for hop=320, sr=32000) ──────
         self.mel_per_csv_frame = (model_sr * self.FRAME_DURATION_S) / hop_length
 
-        # ── Collect clips and build flat item index ──────────────────────────
-        self.clips   = self._collect_clips(split)   # list of (audio_path, csv_path)
-        self._items  = self._build_item_index()     # list of (clip_idx, start_sample)
-
-        # Pre-parse all CSVs — metadata is small, fits comfortably in RAM
+        # Parse CSVs before building item index (oversampling needs _events)
+        self.clips   = self._collect_clips(split)
         self._events = [self._parse_csv(csv_p) for _, csv_p in self.clips]
+        self._items  = self._build_item_index()
 
     # ── Abstract interface ───────────────────────────────────────────────────
 
@@ -146,27 +133,75 @@ class SELDDataset(Dataset, ABC):
         Parse one annotation CSV.
 
         Returns a list of ``(frame_100ms, class_idx, source_idx, az_deg, el_deg)``.
-        The *frame_100ms* value is 0-indexed (frame 0 covers 0–100 ms).
         """
         ...
 
-    # ── Item index ───────────────────────────────────────────────────────────
+    # ── Item index with class-based oversampling ─────────────────────────────
 
-    def _build_item_index(self) -> List[Tuple[int, int]]:
-        """Build flat list of ``(clip_idx, start_sample_at_orig_sr)`` pairs."""
-        items: List[Tuple[int, int]] = []
+    def _build_item_index(self) -> List[Tuple[int, int, bool]]:
+        """
+        Build flat list of ``(clip_idx, start_sample, is_forced)`` triples.
+
+        ``is_forced=True`` marks oversampled items that must receive an
+        augmentation (passed as ``force=True`` to SELDAugment).
+        Oversampling is applied only when ``augment is not None`` and
+        ``split == 'train'``.
+        """
+        base_items: List[Tuple[int, int]] = []
         if not self.windowed:
             for i in range(len(self.clips)):
-                items.append((i, 0))
+                base_items.append((i, 0))
         else:
             for i, (audio_path, _) in enumerate(self.clips):
                 info = sf.info(str(audio_path))
                 n_samples = info.frames
                 start = 0
                 while start < n_samples:
-                    items.append((i, start))
+                    base_items.append((i, start))
                     start += self.hop_samples
-        return items
+
+        if self.augment is None or self.split != 'train':
+            return [(ci, ss, False) for ci, ss in base_items]
+
+        # ── Class-based oversampling ──────────────────────────────────────
+        samples_per_csv = round(self.orig_sr * self.FRAME_DURATION_S)
+
+        def _active(clip_idx: int, start_sample: int) -> set:
+            events = self._events[clip_idx]
+            if not self.windowed:
+                return {cls for (_, cls, *_) in events}
+            s_f = start_sample // samples_per_csv
+            e_f = (start_sample + self.window_samples) // samples_per_csv
+            return {cls for (f, cls, *_) in events if s_f <= f < e_f}
+
+        class_counts: Dict[int, int] = {c: 0 for c in range(self.n_classes)}
+        item_classes: List[set] = []
+        for ci, ss in base_items:
+            cls_set = _active(ci, ss)
+            item_classes.append(cls_set)
+            for c in cls_set:
+                if c < self.n_classes:
+                    class_counts[c] += 1
+
+        populated = [v for v in class_counts.values() if v > 0]
+        if not populated:
+            return [(ci, ss, False) for ci, ss in base_items]
+        max_count = max(populated)
+
+        rng = np.random.default_rng(42)
+        aug_items: List[Tuple[int, int]] = []
+        for c in range(self.n_classes):
+            pool   = [i for i, cls_set in enumerate(item_classes) if c in cls_set]
+            needed = max_count - class_counts[c]
+            if not pool or needed <= 0:
+                continue
+            for i in rng.choice(pool, size=needed, replace=True):
+                aug_items.append(base_items[int(i)])
+
+        return (
+            [(ci, ss, False) for ci, ss in base_items]
+            + [(ci, ss, True)  for ci, ss in aug_items]
+        )
 
     # ── Dataset interface ────────────────────────────────────────────────────
 
@@ -176,43 +211,52 @@ class SELDDataset(Dataset, ABC):
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Returns:
-            wav    : ``(n_mics, T_samples)`` float32 tensor at *orig_sr*
-            target : ``(T_mel, N_tracks, C_classes, 3)`` float32 Multi-ACCDOA target
+            wav    : ``(4, T_samples)`` float32 FOA tensor at *output_sr*
+                     (or *orig_sr* when output_sr is None)
+            target : ``(T_mel, N_tracks, C_classes, 3)`` Multi-ACCDOA target
         """
-        clip_idx, start_sample = self._items[idx]
-        audio_path, _          = self.clips[clip_idx]
-        events                 = self._events[clip_idx]
+        clip_idx, start_sample, is_forced = self._items[idx]
+        audio_path, _                     = self.clips[clip_idx]
+        events                            = self._events[clip_idx]
 
         # ── Load audio ───────────────────────────────────────────────────────
         if self.windowed:
             wav, _ = sf.read(
                 str(audio_path),
-                start    = start_sample,
-                stop     = start_sample + self.window_samples,
-                dtype    = 'float32',
-                always_2d= True,
+                start     = start_sample,
+                stop      = start_sample + self.window_samples,
+                dtype     = 'float32',
+                always_2d = True,
             )
-            # Zero-pad last window if shorter
             if wav.shape[0] < self.window_samples:
                 pad = self.window_samples - wav.shape[0]
-                wav = np.concatenate([wav, np.zeros((pad, wav.shape[1]), dtype=np.float32)])
+                wav = np.concatenate(
+                    [wav, np.zeros((pad, wav.shape[1]), dtype=np.float32)]
+                )
             n_mel = self.T_mel_window
         else:
-            wav, _ = sf.read(str(audio_path), dtype='float32', always_2d=True)
-            start_sample = 0
-            n_samples_model = round(wav.shape[0] * self.model_sr / self.orig_sr)
-            n_mel = 1 + n_samples_model // self.hop_length
+            wav, _       = sf.read(str(audio_path), dtype='float32', always_2d=True)
+            start_sample = 0   # full-clip always starts at 0
 
-        # soundfile returns (T_samples, n_mics) — transpose to (n_mics, T_samples)
-        wav_t = torch.from_numpy(wav.T.copy())   # (n_mics, T_samples)
+        # soundfile returns (T, n_mics) → transpose to (n_mics, T)
+        wav_t = torch.from_numpy(wav.T.copy())   # (4, T_samples)
+
+        # Optional resample (e.g. TAU2019: 48 kHz → 24 kHz)
+        if self.output_sr is not None:
+            wav_t = torchaudio.functional.resample(wav_t, self.orig_sr, self.output_sr)
+
+        # n_mel for full-clip mode: computed after resample
+        if not self.windowed:
+            n_samples_model = round(wav_t.shape[-1] * self.model_sr / self._eff_sr)
+            n_mel           = 1 + n_samples_model // self.hop_length
 
         # ── Build Multi-ACCDOA target ────────────────────────────────────────
         start_at_model = round(start_sample * self.model_sr / self.orig_sr)
         target = self._build_target(events, n_mel, start_at_model)
 
-        # ── Data augmentation (train split only) ─────────────────────────────
+        # ── Data augmentation ────────────────────────────────────────────────
         if self.augment is not None:
-            wav_t, target = self.augment(wav_t, target)
+            wav_t, target = self.augment(wav_t, target, force=is_forced)
 
         return wav_t, target
 
@@ -227,9 +271,8 @@ class SELDDataset(Dataset, ABC):
         """
         Build ``(T_mel, N_tracks, C_classes, 3)`` Multi-ACCDOA target.
 
-        Each mel frame is mapped to its corresponding 100ms CSV frame.
         Active sources in a frame are assigned to tracks in ascending
-        ``source_idx`` order; tracks beyond ``n_tracks`` are silently dropped.
+        ``source_idx`` order; tracks beyond ``n_tracks`` are dropped.
         """
         target = torch.zeros(n_mel, self.n_tracks, self.n_classes, 3,
                              dtype=torch.float32)
@@ -239,31 +282,28 @@ class SELDDataset(Dataset, ABC):
         # Index events: csv_frame → class_idx → [(source_idx, x, y, z), ...]
         csv_data: dict = {}
         for (frame_100ms, class_idx, source_idx, az_deg, el_deg) in events:
-            az = math.radians(az_deg)
-            el = math.radians(el_deg)
+            az  = math.radians(az_deg)
+            el  = math.radians(el_deg)
             xyz = (
                 math.sin(az) * math.cos(el),
                 math.cos(az) * math.cos(el),
                 math.sin(el),
             )
-            csv_data \
-                .setdefault(frame_100ms, {}) \
-                .setdefault(class_idx, []) \
-                .append((source_idx, *xyz))
+            (csv_data
+             .setdefault(frame_100ms, {})
+             .setdefault(class_idx, [])
+             .append((source_idx, *xyz)))
 
-        # Sort sources by source_idx within each (frame, class) group
         for frame_data in csv_data.values():
             for ci in frame_data:
                 frame_data[ci].sort(key=lambda s: s[0])
 
-        # Map mel frames → csv frames using vectorised numpy
-        t_s_arr = (
+        t_s_arr   = (
             start_at_model_sr + np.arange(n_mel, dtype=np.float64) * self.hop_length
         ) / self.model_sr
         t_csv_arr = (t_s_arr / self.FRAME_DURATION_S).astype(np.int64)
 
-        # Fill target — cache per-csv-frame lookup to avoid redundant dict accesses
-        prev_csv: int = -1
+        prev_csv:  int  = -1
         frame_data: dict = {}
         for t_mel in range(n_mel):
             t_csv = int(t_csv_arr[t_mel])
@@ -278,38 +318,7 @@ class SELDDataset(Dataset, ABC):
 
         return target
 
-    # ── Weighted sampler support ─────────────────────────────────────────────
-
-    def clip_weights(self) -> torch.Tensor:
-        """
-        Per-item importance weights for WeightedRandomSampler.
-
-        Each item's weight = max(pos_weight[c]) over all classes active in the
-        item's parent clip.  pos_weight is computed from training CSV annotations
-        (same formula as in loss.py: neg_frames / pos_frames per class).
-
-        Returns a FloatTensor of shape ``(len(self),)``.
-        """
-        pw = self._pos_weights()   # (n_classes,) FloatTensor
-
-        # Build per-clip weights from self._events (one entry per clip)
-        clip_w = []
-        for events in self._events:
-            active = set(cls for (_, cls, *_) in events)
-            w = max((pw[c].item() for c in active), default=1.0)
-            clip_w.append(w)
-
-        # Map per-clip weights to per-item weights (items may be windows of clips)
-        item_weights = torch.tensor(
-            [clip_w[clip_idx] for clip_idx, _ in self._items],
-            dtype=torch.float32,
-        )
-        return item_weights
-
-    @abstractmethod
-    def _pos_weights(self) -> torch.Tensor:
-        """Return (n_classes,) FloatTensor of pos_weights for this dataset's root."""
-        ...
+    # ── Collate ──────────────────────────────────────────────────────────────
 
     @staticmethod
     def collate_fn(
@@ -318,16 +327,18 @@ class SELDDataset(Dataset, ABC):
         """
         Pad a mixed-length batch of (wav, target) pairs.
 
-        Used automatically when ``windowed=False``; for windowed mode all
-        items have the same shape and the default collate is fine.
+        Used when ``windowed=False``; for windowed mode all items have the
+        same shape and the default collate is sufficient.
         """
         wavs, targets = zip(*batch)
         max_wav = max(w.shape[-1] for w in wavs)
         max_t   = max(t.shape[0]  for t in targets)
 
-        B       = len(wavs)
-        n_mics  = wavs[0].shape[0]
-        n_t, n_c, n_xyz = targets[0].shape[1], targets[0].shape[2], targets[0].shape[3]
+        B      = len(wavs)
+        n_mics = wavs[0].shape[0]
+        n_t    = targets[0].shape[1]
+        n_c    = targets[0].shape[2]
+        n_xyz  = targets[0].shape[3]
 
         pad_wav = torch.zeros(B, n_mics, max_wav)
         pad_tgt = torch.zeros(B, max_t, n_t, n_c, n_xyz)
@@ -340,362 +351,263 @@ class SELDDataset(Dataset, ABC):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SELDAugment — Format-aware SELD augmentation
+# SELDAugment — FOA-only SELD data augmentation
 # ══════════════════════════════════════════════════════════════════════════════
 
 class SELDAugment:
     """
-    Format-aware SELD data augmentation.
+    FOA-only SELD data augmentation with 3 mutually exclusive techniques.
 
     Parameters
     ----------
-    audio_format : 'foa' | 'mic'
-    enabled      : master switch; if False, __call__ is a no-op.
+    enabled       : master switch; if False, __call__ is a no-op.
+    p_16patterns  : probability of applying a random FOA symmetry pattern
+    p_gain        : probability of applying global amplitude scaling
+    p_noise       : probability of adding white noise
+    gain_min      : minimum amplitude gain (< 1.0 = attenuation)
+    gain_max      : maximum amplitude gain
+    noise_snr_db  : injected noise SNR in dB (higher = less noise)
 
-    FOA parameters
-    ~~~~~~~~~~~~~~
-    p_rotate     : probability of applying azimuth rotation
-    p_gain       : probability of applying global gain
-    p_elevflip   : probability of applying elevation flip
-    gain_min_db  : minimum gain in dB (negative = attenuation)
-    gain_max_db  : maximum gain in dB
+    Augmentations
+    ~~~~~~~~~~~~~
+    A — 16 Patterns (Mazzon et al., foa_augmentations.pdf, Table 1):
+        Select uniformly one of the 15 non-identity FOA symmetry transforms.
+        Each pattern permutes/negates channels ch1(X), ch2(Y), ch3(Z) and
+        applies the corresponding DOA transformation.  W channel (ch0) is
+        always preserved.  DOA target updated consistently.
 
-    MIC parameters
-    ~~~~~~~~~~~~~~
-    p_perchan_gain  : probability of per-channel independent gain
-    perchan_gain_db : max ±dB for per-channel gain
-    p_noise         : probability of adding diffuse noise
-    noise_snr_db    : signal-to-noise ratio for added noise (higher = less noise)
+    B — Gain Scaling:
+        g ~ U(gain_min, gain_max) applied to all 4 channels.
+        DOA target invariant.
 
-    FOA augmentations
-    ~~~~~~~~~~~~~~~~~
-    A — Azimuth rotation  : rotate sound field by theta ~ U(-pi, pi).
-        W unchanged; X' = X cos(θ) - Y sin(θ); Y' = X sin(θ) + Y cos(θ); Z unchanged.
-        DOA target updated: x' = x cos(θ) - y sin(θ); y' = x sin(θ) + y cos(θ); z' = z.
-    B — Global gain       : multiply all channels by g = exp(U(min_db, max_db) * ln10/20).
-        No target modification.
-    C — Elevation flip    : negate Z channel and target z coordinates.
-        W, X, Y unchanged; Z_out = -Z; target: z -> -z.
+    C — White Noise Injection:
+        noise_std = RMS_signal / 10^(noise_snr_db/20).
+        Added to all 4 channels.  DOA target invariant.
 
-    MIC augmentations (geometry-blind, no target modification)
-    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    1 — Global gain       : applied to all channels.
-    2 — Per-channel gain  : independent ±perchan_gain_db on each channel.
-    3 — Diffuse noise     : add white noise at noise_snr_db SNR relative to RMS.
+    Mutual exclusion:
+        p_none = 1 - (p_16patterns + p_gain + p_noise) ≥ 0.
+        At most one augmentation per call (categorical sampling).
+        With force=True, p_none is excluded — exactly one aug is applied.
     """
+
+    # 15 non-identity FOA symmetry patterns from Mazzon et al., Table 1.
+    # Encoding: (ch1_sign, ch1_from, ch2_sign, ch2_from, ch3_sign,
+    #             cx_sign,  cx_from,  cy_sign,  cy_from,  cz_sign)
+    # ch1_from / ch2_from : 1=take from X (wav[1]), 2=take from Y (wav[2])
+    # cx_from  / cy_from  : 0=take from code_x (tgt[...,0]), 1=from code_y (tgt[...,1])
+    _PATTERNS: List[Tuple] = [
+        (-1, 2, +1, 1, +1,  +1, 1, -1, 0, +1),  # 1   φ+π/2,  θ
+        (+1, 2, -1, 1, +1,  -1, 1, +1, 0, +1),  # 2   φ-π/2,  θ
+        (-1, 1, -1, 2, +1,  -1, 0, -1, 1, +1),  # 3   φ+π,    θ
+        (+1, 1, -1, 2, +1,  -1, 0, +1, 1, +1),  # 4  -φ,      θ
+        (+1, 2, +1, 1, +1,  +1, 1, +1, 0, +1),  # 5  -φ+π/2,  θ
+        (-1, 2, -1, 1, +1,  -1, 1, -1, 0, +1),  # 6  -φ-π/2,  θ
+        (-1, 1, +1, 2, +1,  +1, 0, -1, 1, +1),  # 7  -φ+π,    θ
+        (+1, 1, +1, 2, -1,  +1, 0, +1, 1, -1),  # 8   φ,     -θ
+        (-1, 2, +1, 1, -1,  +1, 1, -1, 0, -1),  # 9   φ+π/2, -θ
+        (+1, 2, -1, 1, -1,  -1, 1, +1, 0, -1),  # 10  φ-π/2, -θ
+        (-1, 1, -1, 2, -1,  -1, 0, -1, 1, -1),  # 11  φ+π,   -θ
+        (+1, 1, -1, 2, -1,  -1, 0, +1, 1, -1),  # 12 -φ,     -θ
+        (+1, 2, +1, 1, -1,  +1, 1, +1, 0, -1),  # 13 -φ+π/2, -θ
+        (-1, 2, -1, 1, -1,  -1, 1, -1, 0, -1),  # 14 -φ-π/2, -θ
+        (-1, 1, +1, 2, -1,  +1, 0, -1, 1, -1),  # 15 -φ+π,   -θ
+    ]
 
     def __init__(
         self,
-        audio_format: str = 'foa',
         enabled: bool = True,
-        # FOA
-        p_rotate: float = 0.5,
-        p_gain: float = 0.5,
-        p_elevflip: float = 0.3,
-        gain_min_db: float = -6.0,
-        gain_max_db: float = 6.0,
-        # MIC-specific
-        p_perchan_gain: float = 0.4,
-        perchan_gain_db: float = 2.0,
-        p_noise: float = 0.3,
+        p_16patterns: float = 0.20,
+        p_gain: float = 0.15,
+        p_noise: float = 0.10,
+        gain_min: float = 0.3,
+        gain_max: float = 0.9,
         noise_snr_db: float = 35.0,
-        **kwargs,  # absorb unknown keys from YAML without error
+        **kwargs,   # absorb unknown YAML keys
     ):
-        self.audio_format    = audio_format.lower()
-        self.enabled         = enabled
-        self.p_rotate        = p_rotate
-        self.p_gain          = p_gain
-        self.p_elevflip      = p_elevflip
-        self.gain_min_db     = gain_min_db
-        self.gain_max_db     = gain_max_db
-        self.p_perchan_gain  = p_perchan_gain
-        self.perchan_gain_db = perchan_gain_db
-        self.p_noise         = p_noise
-        self.noise_snr_db    = noise_snr_db
+        self.enabled      = enabled
+        self.p_16patterns = p_16patterns
+        self.p_gain       = p_gain
+        self.p_noise      = p_noise
+        self.gain_min     = gain_min
+        self.gain_max     = gain_max
+        self.noise_snr_db = noise_snr_db
 
-        # Pre-compute log-scale gain bounds (avoids re-computation per call)
-        self._gain_log_min = gain_min_db * math.log(10) / 20.0
-        self._gain_log_max = gain_max_db * math.log(10) / 20.0
-        self._perchan_log  = perchan_gain_db * math.log(10) / 20.0
+        total = p_16patterns + p_gain + p_noise
+        if total > 1.0 + 1e-6:
+            raise ValueError(
+                f"p_16patterns + p_gain + p_noise = {total:.3f} > 1.0"
+            )
+        self._p_none       = max(0.0, 1.0 - total)
+        self._probs        = [p_16patterns, p_gain, p_noise, self._p_none]
+        self._probs_forced = [p_16patterns, p_gain, p_noise]
 
     def __call__(
         self,
         wav: torch.Tensor,
         target: torch.Tensor,
+        force: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Apply augmentations stochastically.
-
         Parameters
         ----------
-        wav    : (n_mics, T_samples) — raw waveform at training SR
-        target : (T_mel, N_tracks, C_classes, 3) — Multi-ACCDOA DOA targets
+        wav    : (4, T_samples) FOA waveform
+        target : (T_mel, N_tracks, C_classes, 3) Multi-ACCDOA target
+        force  : if True, always apply one augmentation (for oversampled items)
 
         Returns
         -------
-        (wav_aug, target_aug) — same shapes, possibly modified in-place copy.
+        (wav_aug, target_aug) — same shapes as input
         """
         if not self.enabled:
             return wav, target
 
-        if self.audio_format == 'foa':
-            return self._foa(wav, target)
-        return self._mic(wav, target)
+        probs = self._probs_forced if force else self._probs
+        total = sum(probs)
+        probs_t = torch.tensor([p / total for p in probs], dtype=torch.float32)
+        choice  = int(torch.multinomial(probs_t, 1).item())
 
-    # ── FOA augmentations ────────────────────────────────────────────────────
+        # choice 0=16patterns, 1=gain, 2=noise, [3=none (only when not forced)]
+        if not force and choice == 3:
+            return wav, target
 
-    def _foa(
-        self,
-        wav: torch.Tensor,
-        target: torch.Tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        # Clone to avoid mutating the original tensors
         wav    = wav.clone()
         target = target.clone()
 
-        if torch.rand(1).item() < self.p_rotate:
-            wav, target = self._foa_rotate(wav, target)
-        if torch.rand(1).item() < self.p_gain:
-            wav = self._global_gain(wav)
-        if torch.rand(1).item() < self.p_elevflip:
-            wav, target = self._foa_elevflip(wav, target)
+        if choice == 0:
+            return self._apply_16patterns(wav, target)
+        if choice == 1:
+            return self._gain(wav, target)
+        return self._noise(wav, target)
 
-        return wav, target
+    # ── Augmentation methods ─────────────────────────────────────────────────
 
-    def _foa_rotate(
+    def _apply_16patterns(
         self,
         wav: torch.Tensor,
         target: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Rotate FOA sound field around vertical (Z) axis by random theta."""
-        theta = (torch.rand(1).item() * 2.0 - 1.0) * math.pi   # U(-pi, pi)
-        cos_t = math.cos(theta)
-        sin_t = math.sin(theta)
+        pat = self._PATTERNS[int(torch.randint(len(self._PATTERNS), (1,)).item())]
+        ch1_s, ch1_f, ch2_s, ch2_f, ch3_s, cx_s, cx_f, cy_s, cy_f, cz_s = pat
 
-        # wav channels: W=0, X=1, Y=2, Z=3
-        x = wav[1].clone()
-        y = wav[2].clone()
-        wav[1] = cos_t * x - sin_t * y
-        wav[2] = sin_t * x + cos_t * y
+        # Read originals before in-place modification
+        x_orig  = wav[1].clone()
+        y_orig  = wav[2].clone()
+        z_orig  = wav[3].clone()
+        wav[1]  = ch1_s * (x_orig if ch1_f == 1 else y_orig)
+        wav[2]  = ch2_s * (x_orig if ch2_f == 1 else y_orig)
+        wav[3]  = ch3_s * z_orig
 
-        # target: (T_mel, N, C, 3) where last dim = (x, y, z) cartesian DOA
-        tx = target[..., 0].clone()
-        ty = target[..., 1].clone()
-        target[..., 0] = cos_t * tx - sin_t * ty
-        target[..., 1] = sin_t * tx + cos_t * ty
+        cx_orig = target[..., 0].clone()
+        cy_orig = target[..., 1].clone()
+        cz_orig = target[..., 2].clone()
+        target[..., 0] = cx_s * (cx_orig if cx_f == 0 else cy_orig)
+        target[..., 1] = cy_s * (cx_orig if cy_f == 0 else cy_orig)
+        target[..., 2] = cz_s * cz_orig
 
         return wav, target
 
-    def _foa_elevflip(
+    def _gain(
         self,
         wav: torch.Tensor,
         target: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Negate Z FOA channel and target z coordinates."""
-        wav[3] = -wav[3]
-        target[..., 2] = -target[..., 2]
-        return wav, target
+        g = torch.empty(1).uniform_(self.gain_min, self.gain_max).item()
+        return wav * g, target
 
-    # ── MIC augmentations ────────────────────────────────────────────────────
-
-    def _mic(
+    def _noise(
         self,
         wav: torch.Tensor,
         target: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        wav = wav.clone()
-
-        if torch.rand(1).item() < self.p_gain:
-            wav = self._global_gain(wav)
-        if torch.rand(1).item() < self.p_perchan_gain:
-            wav = self._perchan_gain(wav)
-        if torch.rand(1).item() < self.p_noise:
-            wav = self._diffuse_noise(wav)
-
-        return wav, target   # target unchanged for MIC
-
-    def _perchan_gain(self, wav: torch.Tensor) -> torch.Tensor:
-        """Apply independent gain in [-perchan_gain_db, +perchan_gain_db] per channel."""
-        n_ch = wav.shape[0]
-        log_gains = (torch.rand(n_ch) * 2.0 - 1.0) * self._perchan_log
-        gains = torch.exp(log_gains).to(wav.dtype)
-        return wav * gains.unsqueeze(1)
-
-    def _diffuse_noise(self, wav: torch.Tensor) -> torch.Tensor:
-        """Add white Gaussian noise at noise_snr_db relative to signal RMS."""
-        rms = wav.pow(2).mean().sqrt().clamp(min=1e-8)
+        rms       = wav.pow(2).mean().sqrt().clamp(min=1e-8)
         noise_std = rms / (10.0 ** (self.noise_snr_db / 20.0))
-        return wav + torch.randn_like(wav) * noise_std
-
-    # ── Shared helpers ───────────────────────────────────────────────────────
-
-    def _global_gain(self, wav: torch.Tensor) -> torch.Tensor:
-        """Multiply all channels by exp(U(log_min, log_max))."""
-        log_g = (torch.rand(1).item()
-                 * (self._gain_log_max - self._gain_log_min)
-                 + self._gain_log_min)
-        return wav * math.exp(log_g)
+        return wav + torch.randn_like(wav) * noise_std, target
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# MixedSELDDataset — Unified STARSS23 + TAU-NIGENS2021 dataset
+# MixedSELDDataset — Unified 3-dataset SELD dataset
 # ══════════════════════════════════════════════════════════════════════════════
 
-# Unified class count: STARSS23 schema is the superset (13 classes)
-N_CLASSES_UNIFIED = 13
+# Unified class count for the 3-dataset mixed schema
+N_CLASSES_UNIFIED = 15
 
+# Per-dataset class-index → unified-class-index remapping vectors
+# Verified against plan Fase 4 (2026-04-30)
+STARSS_TO_UNIFIED  = np.array([0, 0, 1, 2, 3, 4, 5, 6, 7, 7, 8,  9, 10], dtype=np.int64)
+#  idx: 0(f.speech)→0  1(m.speech)→0  2(clapping)→1  3(telephone)→2
+#       4(laughter)→3  5(domestic)→4  6(footsteps)→5 7(door)→6
+#       8(music)→7     9(mus.inst.)→7 10(water)→8    11(bell)→9  12(knock)→10
 
-def compute_combined_class_counts(
-    starss_ds: STARSS23Dataset,
-    tau_ds: TAUNIGENSDataset,
-) -> Dict[int, int]:
-    """
-    Count unique active (clip, frame_100ms) pairs per class across both
-    training datasets, using the already-parsed ``_events`` lists.
+NIGENS_TO_UNIFIED  = np.array([11, 12, 13, 14, 0, 0, 5, 10, 0, 0, 2, 7], dtype=np.int64)
+#  idx: 0(alarm)→11  1(cry.baby)→12  2(crash)→13  3(dog)→14
+#       4(f.scream)→0  5(f.speech)→0  6(footsteps)→5  7(knock)→10
+#       8(m.scream)→0  9(m.speech)→0  10(telephone)→2  11(piano)→7
 
-    Returns
-    -------
-    Dict[class_idx, frame_count]  for classes 0–12 (13-class unified schema).
-    Classes absent from TAU-NIGENS (index 12) will have counts only from
-    STARSS23.  The returned dict always has entries for all 13 classes (≥ 1).
-    """
-    counts: Dict[int, int] = {c: 0 for c in range(N_CLASSES_UNIFIED)}
-
-    def _count(events_per_clip: List[List[Tuple]]) -> None:
-        for clip_idx, events in enumerate(events_per_clip):
-            seen: set = set()
-            for frame_100ms, class_idx, *_ in events:
-                key = (clip_idx, frame_100ms, class_idx)
-                if key not in seen:
-                    seen.add(key)
-                    if class_idx < N_CLASSES_UNIFIED:
-                        counts[class_idx] += 1
-
-    _count(starss_ds._events)
-    _count(tau_ds._events)
-
-    # Guard: ensure no class has a zero count (avoids division by zero)
-    for c in range(N_CLASSES_UNIFIED):
-        if counts[c] == 0:
-            counts[c] = 1
-
-    return counts
+TAU2019_TO_UNIFIED = np.array([0, 0, 6, 4, 4, 4, 10, 3, 4, 2, 0], dtype=np.int64)
+#  idx: 0(clearthroat)→0  1(cough)→0  2(doorslam)→6  3(drawer)→4
+#       4(keyboard)→4  5(keysDrop)→4  6(knock)→10  7(laughter)→3
+#       8(pageturn)→4  9(phone)→2  10(speech)→0
 
 
 class MixedSELDDataset(Dataset):
     """
-    Concatenated STARSS23 + TAU-NIGENS2021 dataset with unified 13-class schema.
+    Concatenated STARSS23 + TAU-NIGENS2021 + TAU2019 under a unified 15-class schema.
 
-    TAU-NIGENS targets ``(T, N, 12, 3)`` are zero-padded to ``(T, N, 13, 3)``
-    on-the-fly at ``__getitem__`` time.  No CSV-level remapping is required
-    because both datasets share the same DCASE class indices 0–11; class 12
-    (Knock) is STARSS23-only and is always absent from TAU-NIGENS items.
-
-    Class balancing
-    ---------------
-    ``clip_weights()`` computes per-item sampling weights from the combined
-    per-class frame counts across both datasets:
-
-        weight[item] = max over active classes c of  target_count / count[c]
-
-    where ``target_count`` defaults to the median class count.  Passing these
-    weights to a ``WeightedRandomSampler`` (with replacement) oversamples clips
-    that contain underrepresented classes.  Because the augmentation pipeline is
-    applied at each draw, repeated draws of the same clip receive different
-    random augmentations, producing genuine diversity.
+    Each dataset's class-specific targets are remapped to the unified class
+    space on-the-fly.  When multiple source classes map to the same unified
+    class (e.g. female_speech and male_speech → speech), the first active
+    (non-zero DOA vector) encountered wins; inactive tracks are skipped.
 
     Args:
-        starss_ds : STARSS23Dataset instance (any split).
-        tau_ds    : TAUNIGENSDataset instance (same split).
-
-    Both datasets must be constructed with the **same** windowing parameters
-    (``window_s``, ``hop_s``, ``model_sr``, ``hop_length``, ``n_tracks``).
+        datasets : list of 3 SELDDataset instances [STARSS23, TAU-NIGENS, TAU2019]
+        mappings : list of 3 np.ndarray class→unified remapping vectors
     """
 
     N_CLASSES = N_CLASSES_UNIFIED
 
     def __init__(
         self,
-        starss_ds: STARSS23Dataset,
-        tau_ds: TAUNIGENSDataset,
+        datasets: list,
+        mappings: List[np.ndarray],
     ) -> None:
-        self._starss   = starss_ds
-        self._tau      = tau_ds
-        self._n_starss = len(starss_ds)
-
-    # ── Dataset interface ─────────────────────────────────────────────────────
+        self._datasets = datasets
+        self._mappings = mappings
+        self._offsets: List[int] = [0]
+        for ds in datasets:
+            self._offsets.append(self._offsets[-1] + len(ds))
 
     def __len__(self) -> int:
-        return self._n_starss + len(self._tau)
+        return self._offsets[-1]
 
-    def __getitem__(
-        self, idx: int
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Returns:
-            wav    : (n_mics, T_samples) float32 at orig_sr
-            target : (T_mel, N_tracks, 13, 3) float32 Multi-ACCDOA
+            wav     : (4, T_samples) float32 FOA tensor
+            target  : (T_mel, N_tracks, 15, 3) float32 Multi-ACCDOA (unified schema)
         """
-        if idx < self._n_starss:
-            return self._starss[idx]
+        # Identify which sub-dataset and local index
+        ds_idx    = bisect.bisect_right(self._offsets, idx, lo=1) - 1
+        local_idx = idx - self._offsets[ds_idx]
+        wav, tgt  = self._datasets[ds_idx][local_idx]
 
-        # TAU-NIGENS — target is (T, N, 12, 3); zero-pad class dim to 13
-        wav, tgt = self._tau[idx - self._n_starss]
-        T, N, C, three = tgt.shape   # C == 12
-        padded = torch.zeros(T, N, self.N_CLASSES, three, dtype=tgt.dtype)
-        padded[:, :, :C, :] = tgt
-        return wav, padded
+        T, N, C, _ = tgt.shape
+        remapped   = torch.zeros(T, N, self.N_CLASSES, 3, dtype=tgt.dtype)
 
-    # ── Windowing flag ────────────────────────────────────────────────────────
+        mapping = self._mappings[ds_idx]
+        for c_orig in range(C):
+            c_unif = int(mapping[c_orig])
+            # Fill only where source is active AND unified slot is still empty
+            act  = tgt[:, :, c_orig, :].norm(dim=-1) > 0         # (T, N)
+            free = remapped[:, :, c_unif, :].norm(dim=-1) == 0   # (T, N)
+            mask = (act & free).unsqueeze(-1)                     # (T, N, 1)
+            remapped[:, :, c_unif, :] = torch.where(
+                mask,
+                tgt[:, :, c_orig, :],
+                remapped[:, :, c_unif, :],
+            )
+
+        return wav, remapped
 
     @property
     def windowed(self) -> bool:
-        """True iff items are fixed-length windows (not full clips)."""
-        return self._starss.windowed
-
-    # ── Balanced sampling weights ─────────────────────────────────────────────
-
-    def clip_weights(
-        self,
-        target_count: Optional[int] = None,
-    ) -> torch.Tensor:
-        """
-        Per-item sampling weights for WeightedRandomSampler.
-
-        weight[item] = max over active classes c of (target_count / count[c])
-
-        ``target_count`` defaults to the median combined class count, targeting
-        a roughly uniform per-class distribution.  Clips whose rarest active
-        class has a lower count receive proportionally higher weight and are
-        therefore oversampled.  Combined with online augmentation, this produces
-        genuinely diverse representations of rare-class clips.
-
-        Returns
-        -------
-        FloatTensor of shape (len(self),).
-        """
-        counts = compute_combined_class_counts(self._starss, self._tau)
-
-        if target_count is None:
-            med = torch.tensor(
-                list(counts.values()), dtype=torch.float32
-            ).median().item()
-            target_count = max(1, int(med))
-
-        weights: List[float] = []
-
-        # STARSS23 items
-        for clip_idx, _ in self._starss._items:
-            events = self._starss._events[clip_idx]
-            active = {cls for (_, cls, *_) in events if cls < self.N_CLASSES}
-            w = max((target_count / counts[c] for c in active), default=1.0)
-            weights.append(w)
-
-        # TAU-NIGENS items
-        for clip_idx, _ in self._tau._items:
-            events = self._tau._events[clip_idx]
-            active = {cls for (_, cls, *_) in events if cls < self.N_CLASSES}
-            w = max((target_count / counts[c] for c in active), default=1.0)
-            weights.append(w)
-
-        return torch.tensor(weights, dtype=torch.float32)
+        return self._datasets[0].windowed

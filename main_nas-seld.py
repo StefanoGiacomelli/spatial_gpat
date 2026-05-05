@@ -64,6 +64,8 @@ Stefano Giacomelli, Ph.D. candidate
 DISIM Department — University of L'Aquila
 """
 
+from dotenv import load_dotenv
+
 import atexit
 import json
 import signal
@@ -92,7 +94,8 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from experiments_nas_seld.train import NASLightningModule  # noqa: E402
-from datasets.datamodule import SELDDataModule     # noqa: E402
+from datasets.datamodule import (SELDDataModule, MixedSELDDataModule,  # noqa: E402
+                                  MixedSELDTestDataModule)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Constants
@@ -118,6 +121,13 @@ _DEFAULT_HOP_S       =  2.5    # unused in full-clip mode
 DATASET_ROOTS = {
     'STARSS23':       _ROOT / 'data' / 'STARSS23',
     'TAU-NIGENS2021': _ROOT / 'data' / 'TAU-NIGENS2021',
+    'MixedSELD':      _ROOT / 'data' / 'STARSS23',   # placeholder — roots injected separately
+}
+
+MIXED_ROOTS = {
+    'starss_root':  _ROOT / 'data' / 'STARSS23',
+    'tau_root':     _ROOT / 'data' / 'TAU-NIGENS2021',
+    'tau2019_root': _ROOT / 'data' / 'TAU2019',
 }
 
 # Default config / output directories (may be overridden in main())
@@ -145,9 +155,14 @@ def _parse_args():
 
     # ── Dataset ───────────────────────────────────────────────────────────────
     p.add_argument('--dataset', type=str, default='STARSS23',
-                   choices=['STARSS23', 'TAU-NIGENS2021'],
-                   help='Dataset for training/validation/test. Injects semantic.dataset '
-                        'and loads configs/datasets/{NAME}.yaml if present.')
+                   choices=['STARSS23', 'TAU-NIGENS2021', 'MixedSELD'],
+                   help='Dataset for training/validation/test.')
+    p.add_argument('--starss-root',   type=Path, default=None, metavar='PATH',
+                   help='STARSS23 root (MixedSELD mode only).')
+    p.add_argument('--tau-root',      type=Path, default=None, metavar='PATH',
+                   help='TAU-NIGENS2021 root (MixedSELD mode only).')
+    p.add_argument('--tau2019-root',  type=Path, default=None, metavar='PATH',
+                   help='TAU2019 root (MixedSELD mode only).')
 
     # ── Config / output paths ─────────────────────────────────────────────────
     loc = p.add_mutually_exclusive_group()
@@ -166,14 +181,14 @@ def _parse_args():
                         'Default: runs/{config_dir_name}/')
 
     # ── Training hyperparams ──────────────────────────────────────────────────
-    p.add_argument('--epochs',       type=int,   default=_DEFAULT_EPOCHS,
-                   help='Max training epochs per experiment.')
-    p.add_argument('--batch-size',   type=int,   default=_DEFAULT_BATCH_SIZE,
-                   help='Batch size (samples). Only CLI override allowed.')
-    p.add_argument('--lr',           type=float, default=_DEFAULT_LR,
-                   help='Adam learning rate.')
-    p.add_argument('--patience',     type=int,   default=_DEFAULT_PATIENCE,
-                   help='EarlyStopping patience in epochs (0 = disabled, run all --epochs).')
+    p.add_argument('--epochs',       type=int,   default=None,
+                   help='Max training epochs. If omitted, reads from experiment YAML training.epochs.')
+    p.add_argument('--batch-size',   type=int,   default=None,
+                   help='Batch size. If omitted, reads from experiment YAML training.batch_size.')
+    p.add_argument('--lr',           type=float, default=None,
+                   help='Learning rate. If omitted, reads from experiment YAML training.lr.')
+    p.add_argument('--patience',     type=int,   default=None,
+                   help='EarlyStopping patience in epochs (0 = disabled). If omitted, reads from YAML training.patience.')
     p.add_argument('--limit-batches', type=int,  default=0,
                    help='Limit train/val/test batches per epoch (0 = disabled).')
     p.add_argument('--window-s',     type=float, default=_DEFAULT_WINDOW_S,
@@ -272,15 +287,18 @@ def _build_cfg(exp_yaml_path: Path, args) -> dict:
     dataset_name = args.dataset
     cfg.setdefault('semantic', {})['dataset'] = dataset_name
 
-    # 2. Base training block (runner defaults + CLI)
+    # 2. Base training block (runner defaults — lowest priority)
     base_training = {
-        'lr':               args.lr,
-        'epochs':           args.epochs,
-        'batch_size':       args.batch_size,
+        'lr':               _DEFAULT_LR,
+        'epochs':           _DEFAULT_EPOCHS,
+        'batch_size':       _DEFAULT_BATCH_SIZE,
+        'patience':         _DEFAULT_PATIENCE,
         'lambda_spatial':   0.9,    # weight of tPIT (spatial) in total loss
         'lambda_semantic':  0.1,    # weight of BCE (semantic) in total loss
         'beta_sed':         0.6,    # SED/DOA split inside tPIT (DOA = 1-beta = 0.4)
+        'focal_gamma':      0.0,
         'angle_thresh':     20.0,
+        'pos_weight_max':   20.0,
         'lr_reduce_factor': 0.75,   # ReduceLROnPlateau factor
         'lr_patience':      20,     # ReduceLROnPlateau patience (epochs)
         'lr_min':           1e-5,   # ReduceLROnPlateau LR floor
@@ -297,26 +315,32 @@ def _build_cfg(exp_yaml_path: Path, args) -> dict:
     # 4. Experiment YAML training section overrides dataset config
     base_training.update(cfg.get('training', {}))
 
-    # 5. CLI values always win (re-assert after all merges)
-    base_training['lr']         = args.lr
-    base_training['epochs']     = args.epochs
-    base_training['batch_size'] = args.batch_size
+    # 5. CLI values win only when explicitly provided (not None)
+    if args.lr         is not None: base_training['lr']         = args.lr
+    if args.epochs     is not None: base_training['epochs']     = args.epochs
+    if args.batch_size is not None: base_training['batch_size'] = args.batch_size
+    if args.patience   is not None: base_training['patience']   = args.patience
     cfg['training'] = base_training
 
     # 5. Data runtime params
-    if dataset_name not in DATASET_ROOTS:
-        raise ValueError(f'Unknown dataset: {dataset_name!r}. '
-                         f'Add its root to DATASET_ROOTS in main.py.')
     window_s = args.window_s if args.window_s > 0 else None
     hop_s    = args.hop_s    if args.hop_s    > 0 else None
-    cfg.setdefault('data', {}).update({
-        'root_path':    str(DATASET_ROOTS[dataset_name]),
+    data_update: dict = {
         'window_s':     window_s,
         'hop_s':        hop_s,
-        'val_fraction': VAL_FRACTION,   # STARSS23 only; ignored by TAU-NIGENS
+        'val_fraction': VAL_FRACTION,
         'val_seed':     SEED,
         'num_workers':  args.num_workers,
-    })
+    }
+    if dataset_name == 'MixedSELD':
+        data_update['starss_root']  = str((args.starss_root  or MIXED_ROOTS['starss_root']).resolve())
+        data_update['tau_root']     = str((args.tau_root     or MIXED_ROOTS['tau_root']).resolve())
+        data_update['tau2019_root'] = str((args.tau2019_root or MIXED_ROOTS['tau2019_root']).resolve())
+    elif dataset_name in DATASET_ROOTS:
+        data_update['root_path'] = str(DATASET_ROOTS[dataset_name])
+    else:
+        raise ValueError(f'Unknown dataset: {dataset_name!r}.')
+    cfg.setdefault('data', {}).update(data_update)
     return cfg
 
 
@@ -412,7 +436,11 @@ def _run_experiment(
     metrics_path = METRICS_DIR / f'{exp_name}.json'
     METRICS_DIR.mkdir(parents=True, exist_ok=True)
 
-    dm    = SELDDataModule(cfg)
+    dataset_name = cfg.get('semantic', {}).get('dataset', 'STARSS23')
+    if dataset_name == 'MixedSELD':
+        dm = MixedSELDDataModule(cfg)
+    else:
+        dm = SELDDataModule(cfg)
     model = NASLightningModule(cfg)
     model.set_metrics_path(metrics_path)
 
@@ -437,11 +465,12 @@ def _run_experiment(
         auto_insert_metric_name = False,
     )
     callbacks = [ckpt_cb]
-    if args.patience > 0:
+    patience = cfg['training'].get('patience', _DEFAULT_PATIENCE)
+    if patience > 0:
         callbacks.append(EarlyStopping(
             monitor  = 'val_seld_score',
             mode     = 'min',
-            patience = args.patience,
+            patience = patience,
             verbose  = True,
         ))
 
@@ -475,6 +504,12 @@ def _run_experiment(
         name     = exp_name,
         version  = 0,
     )
+    
+    wb_logger = WandbLogger(
+        project  = 'spatial-gpat',
+        name     = exp_name,
+        config   = cfg
+    )
 
     wb_logger = WandbLogger(
         project  = 'spatial-gpat',
@@ -483,7 +518,7 @@ def _run_experiment(
     )
 
     trainer_kwargs = dict(
-        max_epochs              = args.epochs,
+        max_epochs              = cfg['training']['epochs'],
         callbacks               = callbacks,
         accelerator             = accel,
         devices                 = devices,
@@ -506,7 +541,11 @@ def _run_experiment(
     trainer.fit(model, dm, ckpt_path=resume_ckpt)
 
     # 9. Test with best checkpoint ─────────────────────────────────────────────
-    trainer.test(model, dm, ckpt_path='best')
+    if dataset_name == 'MixedSELD':
+        test_dm = MixedSELDTestDataModule(cfg)
+        trainer.test(model, test_dm, ckpt_path='best')
+    else:
+        trainer.test(model, dm, ckpt_path='best')
 
     # 10. Remove last.ckpt (kept only as mid-run resume target) ───────────────
     last_path = exp_dir / 'last.ckpt'

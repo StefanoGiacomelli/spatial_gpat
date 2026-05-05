@@ -14,6 +14,7 @@ input:
   n_fft: 512
 
 semantic:
+  dataset:    MixedSELD
   checkpoint: semantic_backbone/epanns/checkpoint_closeto_.44.pt
   early_group: {init: pretrained, frozen: false}
   late_group:  {init: pretrained, frozen: false}
@@ -32,36 +33,60 @@ spatial_early:
   use_msca: true
   msca_reduction: 4
   stride: [1, 1]
-  dropout: 0.4
+  dropout: 0.1
 
 spatial_late:
   type: track_transformer
   n_layers: 1
   d_model: 128
   n_heads: 4
-  n_tracks: 2
-  dropout: 0.3
+  n_tracks: 3
+  dropout: 0.1
 
 track_smoothing_spatial:
   type: bigru
   n_layers: 1
   hidden_size: 256
-  dropout: 0.3
+  dropout: 0.1
 
 heads:
-  n_tracks: 2
+  n_tracks:  3
+  n_classes: 15
 
 data:
-  format: foa
+  format:       foa
+  window_s:     10.0
+  hop_s:        2.5
+  val_fraction: 0.2
+  val_seed:     42
+  num_workers:  4
 
 augmentation:
-  enabled: true
-  p_rotate:    0.5
-  p_gain:      0.5
-  p_elevflip:  0.3
-  gain_min_db: -6.0
-  gain_max_db:  6.0
+  enabled:      true
+  p_16patterns: 0.50
+  p_gain:       0.20
+  p_noise:      0.20
+  gain_min:     0.3
+  gain_max:     0.9
+  noise_snr_db: 35.0
 
 training:
-  focal_gamma:    2.0    # focal loss — ablation vs. exp_ft_mixed_bce
-  pos_weight_max: 20.0
+  epochs:           200
+  batch_size:       1
+  patience:         30
+  
+  lambda_spatial:   0.9
+  lambda_semantic:  0.1
+  beta_sed:         0.7
+  focal_gamma:      2.0
+  angle_thresh:     20.0
+  
+  pos_weight_max:   20.0
+  
+  lr:               5.0e-4
+  lr_reduce_factor: 0.75
+  lr_patience:      20
+  lr_min:           1.0e-5
+  
+  window_s:         10.0
+  hop_s:            2.5

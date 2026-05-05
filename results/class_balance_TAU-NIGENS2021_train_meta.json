@@ -1,0 +1,8 @@
+{
+  "dataset": "TAU-NIGENS2021",
+  "split": "train",
+  "n_clips": 400,
+  "n_windows": 4800,
+  "window_s": 10.0,
+  "hop_s": 5.0
+}

@@ -1,23 +1,29 @@
-from .utils          import SELDDataset, SELDAugment, MixedSELDDataset, compute_combined_class_counts
-from .starss23       import STARSS23Dataset, STARSS23WithDistanceDataset
-from .tau_nigens     import TAUNIGENSDataset
+from .utils      import (SELDDataset, SELDAugment, MixedSELDDataset,
+                          N_CLASSES_UNIFIED,
+                          STARSS_TO_UNIFIED, NIGENS_TO_UNIFIED, TAU2019_TO_UNIFIED)
+from .starss23   import STARSS23Dataset
+from .tau_nigens import TAUNIGENSDataset
+from .tau2019    import TAU2019Dataset
 from .audioset_strong import AudioSetAugment, AudioSetStrongDataset
-from .datamodule     import (SELDDataModule, FinetuneDataModule, SpatialDataModule,
-                              AudioSetStrongDataModule, STARSS23SEDDataModule)
+from .datamodule import (SELDDataModule, MixedSELDDataModule, MixedSELDTestDataModule,
+                          AudioSetStrongDataModule, STARSS23SEDDataModule)
 
 __all__ = [
     'SELDDataset',
     'SELDAugment',
     'MixedSELDDataset',
-    'compute_combined_class_counts',
+    'N_CLASSES_UNIFIED',
+    'STARSS_TO_UNIFIED',
+    'NIGENS_TO_UNIFIED',
+    'TAU2019_TO_UNIFIED',
     'STARSS23Dataset',
-    'STARSS23WithDistanceDataset',
     'TAUNIGENSDataset',
+    'TAU2019Dataset',
     'AudioSetAugment',
     'AudioSetStrongDataset',
     'SELDDataModule',
-    'FinetuneDataModule',
-    'SpatialDataModule',
+    'MixedSELDDataModule',
+    'MixedSELDTestDataModule',
     'AudioSetStrongDataModule',
     'STARSS23SEDDataModule',
 ]

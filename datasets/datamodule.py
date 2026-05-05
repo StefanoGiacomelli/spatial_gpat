@@ -4,9 +4,8 @@ DataModules — all PyTorch Lightning DataModules for spatial_gpat
 
 Catalog
 -------
-SELDDataModule        : Single-dataset SELD (STARSS23 or TAU-NIGENS2021).
-FinetuneDataModule    : Mixed STARSS23 + TAU-NIGENS DataModule for joint SELD training.
-SpatialDataModule     : STARSS23 with distance annotations for SpatialSRP training.
+SELDDataModule        : Single-dataset SELD (STARSS23, TAU-NIGENS2021, or TAU2019).
+MixedSELDDataModule   : Mixed STARSS23 + TAU-NIGENS2021 + TAU2019, unified 15-class schema.
 AudioSetStrongDataModule : AudioSet-Strong SED fine-tuning (GP-AT / E-PANNs backbone).
 STARSS23SEDDataModule : STARSS23 repackaged as SED-style batches for AT2SED training.
 
@@ -29,9 +28,11 @@ import torch
 import lightning as L
 from torch.utils.data import DataLoader, WeightedRandomSampler
 
-from .utils          import SELDAugment, SELDDataset, MixedSELDDataset
-from .starss23       import STARSS23Dataset, STARSS23WithDistanceDataset, compute_pos_weights
-from .tau_nigens     import TAUNIGENSDataset
+from .utils      import (SELDAugment, SELDDataset, MixedSELDDataset,
+                         STARSS_TO_UNIFIED, NIGENS_TO_UNIFIED, TAU2019_TO_UNIFIED)
+from .starss23   import STARSS23Dataset
+from .tau_nigens import TAUNIGENSDataset
+from .tau2019    import TAU2019Dataset
 from .audioset_strong import AudioSetAugment, AudioSetStrongDataset
 
 
@@ -41,27 +42,30 @@ from .audioset_strong import AudioSetAugment, AudioSetStrongDataset
 
 class SELDDataModule(L.LightningDataModule):
     """
-    LightningDataModule for SELD datasets.
+    LightningDataModule for a single SELD dataset.
+
+    Supported datasets (``semantic.dataset``):
+        'STARSS23'       — 13 classes, 24 kHz, room-stratified split
+        'TAU-NIGENS2021' — 12 classes, 24 kHz, fold-based split
+        'TAU2019'        — 11 classes, 48→24 kHz, 4-fold CV
 
     Args:
-        cfg : full NAS configuration dict (as loaded from YAML).
-              Must contain at minimum ``data.root_path``, ``input.sr``,
-              ``input.hop_length``, ``heads.n_tracks``, and
-              ``semantic.dataset``.
+        cfg : full NAS configuration dict.  Must contain at minimum
+              ``data.root_path``, ``input.sr``, ``input.hop_length``,
+              ``heads.n_tracks``, and ``semantic.dataset``.
     """
 
     def __init__(self, cfg: dict):
         super().__init__()
 
-        data_cfg = cfg.get('data', {})
-        in_cfg   = cfg['input']
-        head_cfg = cfg.get('heads', {})
-        sem_cfg  = cfg.get('semantic', {})
-        train_cfg= cfg.get('training', {})
+        data_cfg  = cfg.get('data', {})
+        in_cfg    = cfg['input']
+        head_cfg  = cfg.get('heads', {})
+        sem_cfg   = cfg.get('semantic', {})
+        train_cfg = cfg.get('training', {})
 
         self.dataset_name = sem_cfg.get('dataset', 'STARSS23')
         self.root         = Path(data_cfg['root_path'])
-        self.audio_format = data_cfg.get('format', 'foa')
         self.model_sr     = in_cfg['sr']
         self.hop_length   = in_cfg.get('hop_length', 320)
         self.n_tracks     = head_cfg.get('n_tracks', 5)
@@ -69,21 +73,15 @@ class SELDDataModule(L.LightningDataModule):
         self.hop_s        = data_cfg.get('hop_s', None)
         self.val_fraction = data_cfg.get('val_fraction', 0.2)
         self.val_seed     = data_cfg.get('val_seed', 42)
+        self.fold         = data_cfg.get('fold', 1)           # TAU2019 only
         self.batch_size   = train_cfg.get('batch_size', 16)
         self.num_workers  = data_cfg.get('num_workers', 4)
 
-        # ── Augmentation (train split only) ──────────────────────────────────
         aug_cfg = cfg.get('augmentation', {})
         if aug_cfg.get('enabled', False):
-            self.augment_train: Optional[SELDAugment] = SELDAugment(
-                audio_format = self.audio_format,
-                **aug_cfg,
-            )
+            self.augment_train: Optional[SELDAugment] = SELDAugment(**aug_cfg)
         else:
             self.augment_train = None
-
-        # ── WeightedRandomSampler ─────────────────────────────────────────────
-        self.use_weighted_sampler: bool = train_cfg.get('weighted_sampler', False)
 
         self._train_ds: Optional[SELDDataset] = None
         self._val_ds:   Optional[SELDDataset] = None
@@ -93,28 +91,29 @@ class SELDDataModule(L.LightningDataModule):
 
     def _make_dataset(self, split: str) -> SELDDataset:
         common = dict(
-            root         = self.root,
-            split        = split,
-            model_sr     = self.model_sr,
-            hop_length   = self.hop_length,
-            n_tracks     = self.n_tracks,
-            window_s     = self.window_s,
-            hop_s        = self.hop_s,
-            audio_format = self.audio_format,
-            augment      = self.augment_train if split == 'train' else None,
+            split      = split,
+            model_sr   = self.model_sr,
+            hop_length = self.hop_length,
+            n_tracks   = self.n_tracks,
+            window_s   = self.window_s,
+            hop_s      = self.hop_s,
+            augment    = self.augment_train if split == 'train' else None,
         )
         if self.dataset_name == 'STARSS23':
             return STARSS23Dataset(
-                **common,
+                root         = self.root,
                 val_fraction = self.val_fraction,
                 val_seed     = self.val_seed,
+                **common,
             )
         elif self.dataset_name == 'TAU-NIGENS2021':
-            return TAUNIGENSDataset(**common)
+            return TAUNIGENSDataset(root=self.root, **common)
+        elif self.dataset_name == 'TAU2019':
+            return TAU2019Dataset(root=self.root, fold=self.fold, **common)
         else:
             raise ValueError(
                 f"[SELDDataModule] Unknown dataset '{self.dataset_name}'. "
-                "Expected 'STARSS23' or 'TAU-NIGENS2021'."
+                "Expected 'STARSS23', 'TAU-NIGENS2021', or 'TAU2019'."
             )
 
     # ── Lightning hooks ──────────────────────────────────────────────────────
@@ -131,26 +130,12 @@ class SELDDataModule(L.LightningDataModule):
         ds: SELDDataset,
         shuffle: bool,
         drop_last: bool = False,
-        use_sampler: bool = False,
     ) -> DataLoader:
-        # Variable-length full clips need custom padding; fixed windows do not.
         collate = None if ds.windowed else SELDDataset.collate_fn
-
-        sampler = None
-        if use_sampler and self.use_weighted_sampler:
-            weights = ds.clip_weights()
-            sampler = WeightedRandomSampler(
-                weights,
-                num_samples = len(weights),
-                replacement = True,
-            )
-            shuffle = False   # sampler and shuffle are mutually exclusive
-
         return DataLoader(
             ds,
             batch_size         = self.batch_size,
             shuffle            = shuffle,
-            sampler            = sampler,
             drop_last          = drop_last,
             num_workers        = self.num_workers,
             collate_fn         = collate,
@@ -159,8 +144,7 @@ class SELDDataModule(L.LightningDataModule):
         )
 
     def train_dataloader(self) -> DataLoader:
-        # drop_last=True: avoids partial batches (B=1) that crash BatchNorm layers
-        return self._make_loader(self._train_ds, shuffle=True, drop_last=True, use_sampler=True)
+        return self._make_loader(self._train_ds, shuffle=True, drop_last=True)
 
     def val_dataloader(self) -> DataLoader:
         return self._make_loader(self._val_ds, shuffle=False)
@@ -168,7 +152,7 @@ class SELDDataModule(L.LightningDataModule):
     def test_dataloader(self) -> DataLoader:
         return self._make_loader(self._test_ds, shuffle=False)
 
-    # ── Convenience properties (usable after setup) ───────────────────────────
+    # ── Convenience properties ────────────────────────────────────────────────
 
     @property
     def train_dataset(self) -> Optional[SELDDataset]:
@@ -184,49 +168,30 @@ class SELDDataModule(L.LightningDataModule):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# FinetuneDataModule
+# MixedSELDDataModule
 # ══════════════════════════════════════════════════════════════════════════════
 
-class FinetuneDataModule(L.LightningDataModule):
+class MixedSELDDataModule(L.LightningDataModule):
     """
-    LightningDataModule for joint SELD fine-tuning on mixed STARSS23 + TAU-NIGENS.
+    LightningDataModule for joint training on STARSS23, TAU-NIGENS2021, TAU2019.
 
-    Train split  : MixedSELDDataset (STARSS23 train + TAU-NIGENS2021 train)
-                   WeightedRandomSampler active by default for class balancing.
-    Val / test   : STARSS23 only — same canonical split used across training runs,
-                   ensuring metrics are directly comparable.
+    Produces ``MixedSELDDataset`` items with a unified 15-class schema.
 
-    Configuration
-    -------------
-    The DataModule is driven by the same ``cfg`` dict structure used by the NAS
-    training scripts.  Relevant keys::
+    Dataset splits:
+        STARSS23       — room-stratified train/val, dev-test as test
+        TAU-NIGENS2021 — fold-based train/val/test (official DCASE2021 split)
+        TAU2019        — mixed_mode=True: train=splits2-4, val=split1, test=eval/split0
 
-        data:
-          starss_root  : path/to/STARSS23        # STARSS23 dataset root
-          tau_root     : path/to/TAU-NIGENS2021  # TAU-NIGENS2021 dataset root
-          format       : foa                     # 'foa' | 'mic'
-          window_s     : 10.0                    # seconds; null → full-clip mode
-          hop_s        : 5.0                     # overlap hop (windowed mode only)
-          val_fraction : 0.2                     # STARSS23 train/val split fraction
-          val_seed     : 42
-          num_workers  : 4
+    Configuration keys (under ``data.``)::
 
-        input:
-          sr           : 32000                   # model sample rate
-          hop_length   : 320                     # STFT/filter hop at model_sr
-
-        heads:
-          n_tracks     : 2                       # Multi-ACCDOA track count
-
-        training:
-          batch_size   : 1
-
-        augmentation:
-          enabled      : true                    # set in dataset config YAML
-
-    Args:
-        cfg : full NAS configuration dict (as loaded from YAML and enriched by
-              _build_cfg in main_finetune.py or main_seld_only.py).
+        starss_root   : path/to/STARSS23
+        tau_root      : path/to/TAU-NIGENS2021
+        tau2019_root  : path/to/TAU2019
+        window_s      : seconds (null = full-clip mode)
+        hop_s         : overlap hop (windowed mode only)
+        val_fraction  : STARSS23 train/val split fraction (default 0.2)
+        val_seed      : RNG seed for STARSS23 split (default 42)
+        num_workers   : DataLoader workers (default 4)
     """
 
     def __init__(self, cfg: dict) -> None:
@@ -237,114 +202,83 @@ class FinetuneDataModule(L.LightningDataModule):
         head_cfg  = cfg.get('heads', {})
         train_cfg = cfg.get('training', {})
 
-        # ── Dataset roots ─────────────────────────────────────────────────────
-        self.starss_root = Path(data_cfg['starss_root'])
-        self.tau_root    = Path(data_cfg['tau_root'])
-        self.audio_format = data_cfg.get('format', 'foa')
+        self.starss_root  = Path(data_cfg['starss_root'])
+        self.tau_root     = Path(data_cfg['tau_root'])
+        self.tau2019_root = Path(data_cfg['tau2019_root'])
 
-        # ── Model feature params ──────────────────────────────────────────────
         self.model_sr   = in_cfg['sr']
         self.hop_length = in_cfg.get('hop_length', 320)
-        self.n_tracks   = head_cfg.get('n_tracks', 2)
+        self.n_tracks   = head_cfg.get('n_tracks', 3)
 
-        # ── Windowing ─────────────────────────────────────────────────────────
         self.window_s     = data_cfg.get('window_s', None)
         self.hop_s        = data_cfg.get('hop_s', None)
-
-        # ── STARSS23 train/val split ──────────────────────────────────────────
         self.val_fraction = data_cfg.get('val_fraction', 0.2)
         self.val_seed     = data_cfg.get('val_seed', 42)
 
-        # ── DataLoader params ─────────────────────────────────────────────────
         self.batch_size  = train_cfg.get('batch_size', 1)
         self.num_workers = data_cfg.get('num_workers', 4)
 
-        # ── Augmentation (training split only) ───────────────────────────────
         aug_cfg = cfg.get('augmentation', {})
         if aug_cfg.get('enabled', False):
-            self.augment_train: Optional[SELDAugment] = SELDAugment(
-                audio_format=self.audio_format,
-                **aug_cfg,
-            )
+            self.augment_train: Optional[SELDAugment] = SELDAugment(**aug_cfg)
         else:
             self.augment_train = None
 
-        # ── Dataset handles (populated in setup) ─────────────────────────────
         self._train_ds: Optional[MixedSELDDataset] = None
-        self._val_ds:   Optional[STARSS23Dataset]  = None
-        self._test_ds:  Optional[STARSS23Dataset]  = None
+        self._val_ds:   Optional[MixedSELDDataset] = None
+        self._test_ds:  Optional[MixedSELDDataset] = None
 
     # ── Dataset construction ─────────────────────────────────────────────────
 
-    def _common_kwargs(self, split: str, augment: bool = False) -> dict:
-        """Shared keyword arguments for both dataset constructors."""
-        return dict(
-            split        = split,
-            model_sr     = self.model_sr,
-            hop_length   = self.hop_length,
-            n_tracks     = self.n_tracks,
-            window_s     = self.window_s,
-            hop_s        = self.hop_s,
-            audio_format = self.audio_format,
-            augment      = self.augment_train if augment else None,
+    def _make_mixed(self, split: str, augment=None) -> MixedSELDDataset:
+        common = dict(
+            split      = split,
+            model_sr   = self.model_sr,
+            hop_length = self.hop_length,
+            n_tracks   = self.n_tracks,
+            window_s   = self.window_s,
+            hop_s      = self.hop_s,
+        )
+        starss_ds = STARSS23Dataset(
+            root         = self.starss_root,
+            val_fraction = self.val_fraction,
+            val_seed     = self.val_seed,
+            augment      = augment,
+            **common,
+        )
+        tau_ds = TAUNIGENSDataset(
+            root    = self.tau_root,
+            augment = augment,
+            **common,
+        )
+        tau2019_ds = TAU2019Dataset(
+            root       = self.tau2019_root,
+            mixed_mode = True,
+            augment    = augment,
+            **common,
+        )
+        return MixedSELDDataset(
+            datasets = [starss_ds, tau_ds, tau2019_ds],
+            mappings = [STARSS_TO_UNIFIED, NIGENS_TO_UNIFIED, TAU2019_TO_UNIFIED],
         )
 
     # ── Lightning hooks ──────────────────────────────────────────────────────
 
     def setup(self, stage: Optional[str] = None) -> None:
         if stage in ('fit', None):
-            starss_train = STARSS23Dataset(
-                root         = self.starss_root,
-                val_fraction = self.val_fraction,
-                val_seed     = self.val_seed,
-                **self._common_kwargs('train', augment=True),
-            )
-            tau_train = TAUNIGENSDataset(
-                root = self.tau_root,
-                **self._common_kwargs('train', augment=True),
-            )
-            self._train_ds = MixedSELDDataset(starss_train, tau_train)
-
-            self._val_ds = STARSS23Dataset(
-                root         = self.starss_root,
-                val_fraction = self.val_fraction,
-                val_seed     = self.val_seed,
-                **self._common_kwargs('val'),
-            )
-
+            self._train_ds = self._make_mixed('train', augment=self.augment_train)
+            self._val_ds   = self._make_mixed('val',   augment=None)
         if stage in ('test', None):
-            self._test_ds = STARSS23Dataset(
-                root         = self.starss_root,
-                val_fraction = self.val_fraction,
-                val_seed     = self.val_seed,
-                **self._common_kwargs('test'),
-            )
+            self._test_ds  = self._make_mixed('test',  augment=None)
 
     def _make_loader(
-        self,
-        ds,
-        shuffle: bool,
-        drop_last: bool = False,
-        use_sampler: bool = False,
+        self, ds: MixedSELDDataset, shuffle: bool, drop_last: bool = False
     ) -> DataLoader:
-        # Variable-length full clips require padding collate; windowed mode does not.
         collate = None if ds.windowed else SELDDataset.collate_fn
-
-        sampler = None
-        if use_sampler and isinstance(ds, MixedSELDDataset):
-            weights = ds.clip_weights()
-            sampler = WeightedRandomSampler(
-                weights,
-                num_samples = len(weights),
-                replacement = True,
-            )
-            shuffle = False   # mutually exclusive with sampler
-
         return DataLoader(
             ds,
             batch_size         = self.batch_size,
             shuffle            = shuffle,
-            sampler            = sampler,
             drop_last          = drop_last,
             num_workers        = self.num_workers,
             collate_fn         = collate,
@@ -353,10 +287,7 @@ class FinetuneDataModule(L.LightningDataModule):
         )
 
     def train_dataloader(self) -> DataLoader:
-        # drop_last=True avoids partial batches that can crash BatchNorm with B=1
-        return self._make_loader(
-            self._train_ds, shuffle=True, drop_last=True, use_sampler=True
-        )
+        return self._make_loader(self._train_ds, shuffle=True, drop_last=True)
 
     def val_dataloader(self) -> DataLoader:
         return self._make_loader(self._val_ds, shuffle=False)
@@ -371,113 +302,94 @@ class FinetuneDataModule(L.LightningDataModule):
         return self._train_ds
 
     @property
-    def val_dataset(self) -> Optional[STARSS23Dataset]:
+    def val_dataset(self) -> Optional[MixedSELDDataset]:
         return self._val_ds
 
     @property
-    def test_dataset(self) -> Optional[STARSS23Dataset]:
+    def test_dataset(self) -> Optional[MixedSELDDataset]:
         return self._test_ds
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SpatialDataModule
+# MixedSELDTestDataModule
 # ══════════════════════════════════════════════════════════════════════════════
 
-class SpatialDataModule(L.LightningDataModule):
-    """
-    Lightning DataModule for the standalone spatial SELD model.
+class MixedSELDTestDataModule(L.LightningDataModule):
+    """Test-only DataModule for models trained on MixedSELD (15 unified classes).
 
-    Wraps ``STARSS23WithDistanceDataset`` (MIC format, with distance annotations)
-    for training, validation, and evaluation of ``SpatialSRPModel``.
+    Provides 3 DataLoaders, each evaluating one dataset with unified 15-class targets:
+        idx=0 → STARSS23  test split (dev-test-sony + dev-test-tau)
+        idx=1 → TAU-NIGENS2021 test split (official fold 6)
+        idx=2 → TAU2019 eval/split0 (mixed_mode=True, split='test')
 
-    Each batch is a 5-tuple:
-        wav        : ``(B, n_mics, T_samples)``              float32
-        accdoa     : ``(B, T_mel, N_tracks, C_classes, 3)``  Multi-ACCDOA (unused by spatial model)
-        doa_target : ``(B, T_mel, N_tracks, 3)``             class-agnostic DOA targets
-        act_target : ``(B, T_mel, N_tracks)``                binary activity
-        dist_target: ``(B, T_mel, N_tracks)``                distance in cm
+    Targets are mapped to the unified 15-class schema (same as MixedSELDDataModule),
+    so metrics are directly comparable between datasets and against training targets.
 
     Args:
-        cfg : merged config dict.
-
-    Config keys used (under ``data.`` and ``training.``)
-    -----------------------------------------------------
-    ``data.root``        : path to STARSS23 dataset root.
-    ``data.sr``          : model sample rate (must equal STARSS23.ORIG_SR = 24000).
-    ``data.hop_length``  : hop length at ``data.sr`` (must equal encoder hop_size).
-    ``data.window_s``    : window duration in seconds (None = full clip).
-    ``data.hop_s``       : window stride in seconds (None = non-overlapping).
-    ``data.num_workers`` : DataLoader worker processes (default 4).
-    ``data.val_fraction``: fraction of dev-train reserved for val (default 0.2).
-    ``data.val_seed``    : RNG seed for reproducible train/val split (default 42).
-    ``heads.n_tracks``   : number of source tracks.
-    ``training.batch_size``: batch size (default 4).
+        cfg : full configuration dict.
     """
 
     def __init__(self, cfg: dict) -> None:
         super().__init__()
-        d_cfg = cfg['data']
 
-        self.root         = Path(d_cfg['root'])
-        self.model_sr     = int(d_cfg['sr'])
-        self.hop_length   = int(d_cfg['hop_length'])
-        self.n_tracks     = int(cfg['heads']['n_tracks'])
-        self.window_s     = d_cfg.get('window_s')
-        self.hop_s        = d_cfg.get('hop_s')
-        self.val_fraction = float(d_cfg.get('val_fraction', 0.2))
-        self.val_seed     = int(d_cfg.get('val_seed', 42))
-        self.batch_size   = int(cfg.get('training', {}).get('batch_size', 4))
-        self.num_workers  = int(d_cfg.get('num_workers', 4))
+        data_cfg  = cfg.get('data', {})
+        in_cfg    = cfg['input']
+        head_cfg  = cfg.get('heads', {})
+        train_cfg = cfg.get('training', {})
 
-        self.train_ds = None
-        self.val_ds   = None
-        self.test_ds  = None
+        self.starss_root  = Path(data_cfg['starss_root'])
+        self.tau_root     = Path(data_cfg['tau_root'])
+        self.tau2019_root = Path(data_cfg['tau2019_root'])
 
-    def setup(self, stage: str = None) -> None:
+        self.model_sr   = in_cfg['sr']
+        self.hop_length = in_cfg.get('hop_length', 320)
+        self.n_tracks   = head_cfg.get('n_tracks', 3)
+
+        self.window_s    = data_cfg.get('window_s', None)
+        self.hop_s       = data_cfg.get('hop_s', None)
+        self.batch_size  = train_cfg.get('batch_size', 1)
+        self.num_workers = data_cfg.get('num_workers', 4)
+
+        self._starss_ds:  Optional[MixedSELDDataset] = None
+        self._tau_ds:     Optional[MixedSELDDataset] = None
+        self._tau2019_ds: Optional[MixedSELDDataset] = None
+
+    def _make_loader(self, ds: MixedSELDDataset) -> DataLoader:
+        collate = None if ds.windowed else SELDDataset.collate_fn
+        return DataLoader(
+            ds,
+            batch_size         = self.batch_size,
+            shuffle            = False,
+            num_workers        = self.num_workers,
+            collate_fn         = collate,
+            pin_memory         = False,
+            persistent_workers = self.num_workers > 0,
+        )
+
+    def setup(self, stage: Optional[str] = None) -> None:
         common = dict(
-            root         = self.root,
-            model_sr     = self.model_sr,
-            hop_length   = self.hop_length,
-            n_tracks     = self.n_tracks,
-            window_s     = self.window_s,
-            hop_s        = self.hop_s,
-            audio_format = 'mic',    # NeuralSRP needs raw MIC signals
-            augment      = None,     # FOA-specific augmentations don't apply here
-            val_fraction = self.val_fraction,
-            val_seed     = self.val_seed,
+            split      = 'test',
+            model_sr   = self.model_sr,
+            hop_length = self.hop_length,
+            n_tracks   = self.n_tracks,
+            window_s   = self.window_s,
+            hop_s      = self.hop_s,
+            augment    = None,
         )
-        if stage in (None, 'fit'):
-            self.train_ds = STARSS23WithDistanceDataset(split='train', **common)
-            self.val_ds   = STARSS23WithDistanceDataset(split='val',   **common)
-        if stage in (None, 'test'):
-            self.test_ds  = STARSS23WithDistanceDataset(split='test',  **common)
+        starss_ds = STARSS23Dataset(root=self.starss_root, **common)
+        tau_ds    = TAUNIGENSDataset(root=self.tau_root, **common)
+        tau2019_ds = TAU2019Dataset(root=self.tau2019_root, mixed_mode=True, **common)
 
-    def train_dataloader(self) -> DataLoader:
-        return DataLoader(
-            self.train_ds,
-            batch_size  = self.batch_size,
-            shuffle     = True,
-            num_workers = self.num_workers,
-            pin_memory  = True,
-            drop_last   = True,
-        )
+        self._starss_ds  = MixedSELDDataset([starss_ds],  [STARSS_TO_UNIFIED])
+        self._tau_ds     = MixedSELDDataset([tau_ds],     [NIGENS_TO_UNIFIED])
+        self._tau2019_ds = MixedSELDDataset([tau2019_ds], [TAU2019_TO_UNIFIED])
 
-    def val_dataloader(self) -> DataLoader:
-        return DataLoader(
-            self.val_ds,
-            batch_size  = self.batch_size,
-            shuffle     = False,
-            num_workers = self.num_workers,
-            pin_memory  = True,
-        )
-
-    def test_dataloader(self) -> DataLoader:
-        return DataLoader(
-            self.test_ds,
-            batch_size  = self.batch_size,
-            shuffle     = False,
-            num_workers = self.num_workers,
-        )
+    def test_dataloader(self) -> List[DataLoader]:
+        return [
+            self._make_loader(self._starss_ds),
+            self._make_loader(self._tau_ds),
+            self._make_loader(self._tau2019_ds),
+        ]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -792,7 +704,7 @@ class STARSS23SEDDataModule(L.LightningDataModule):
         # ── Augmentation (training split only) ───────────────────────────────
         self._augment: Optional[SELDAugment] = None
         if aug_cfg.get('enabled', False):
-            self._augment = SELDAugment(audio_format='foa', **aug_cfg)
+            self._augment = SELDAugment(**aug_cfg)
 
         # ── Internal state ────────────────────────────────────────────────────
         self._train_ds: Optional[STARSS23Dataset] = None
@@ -810,7 +722,6 @@ class STARSS23SEDDataModule(L.LightningDataModule):
             n_tracks     = 2,
             window_s     = self.window_s,
             hop_s        = self.hop_s,
-            audio_format = 'foa',
             val_fraction = self.val_fraction,
             val_seed     = self.val_seed,
         )
@@ -818,16 +729,6 @@ class STARSS23SEDDataModule(L.LightningDataModule):
         if stage in ('fit', None):
             self._train_ds = STARSS23Dataset(split='train', augment=self._augment, **common)
             self._val_ds   = STARSS23Dataset(split='val',   augment=None,           **common)
-
-            # Compute per-class pos_weights from training annotations
-            pw = compute_pos_weights(self.starss_root, n_classes=13)
-            pw = pw.clamp(max=self.pos_weight_max)
-            self._pos_weights = pw
-            print(
-                f'[STARSS23SEDDataModule] pos_weight  '
-                f'min={pw.min().item():.2f}  max={pw.max().item():.1f}'
-                f'  (cap={self.pos_weight_max})'
-            )
 
         if stage in ('test', None):
             self._test_ds = STARSS23Dataset(split='test', augment=None, **common)
@@ -877,14 +778,12 @@ class STARSS23SEDDataModule(L.LightningDataModule):
         )
 
     def _item_weights(self, ds: STARSS23Dataset) -> torch.Tensor:
-        """
-        Per-item sampling weights (maxpos formula).
-
-        ``w_i = max(pos_weight[c] for c in active_classes_of_clip_i)``
-        """
-        pw = self._pos_weights  # (13,) — clamped
+        """Per-item sampling weights (uniform fallback when pos_weights unavailable)."""
+        if self._pos_weights is None:
+            return torch.ones(len(ds._items), dtype=torch.float32)
+        pw = self._pos_weights
         weights: List[float] = []
-        for clip_idx, _ in ds._items:
+        for clip_idx, _ss, _forced in ds._items:   # 3-tuple: clip_idx, start, is_forced
             events = ds._events[clip_idx]
             active = {cls for (_, cls, *_) in events if cls < 13}
             w = max((pw[c].item() for c in active), default=1.0)

@@ -1,8 +1,8 @@
 """
-tests/test_seld_datasets.py
-============================
-Smoke-test, profiling, and dataset analysis script for STARSS23Dataset and
-TAUNIGENSDataset.
+auxiliary/datasets/test_seld_datasets.py
+========================================
+Smoke-test, profiling, and dataset analysis script for STARSS23Dataset,
+TAUNIGENSDataset, TAU2019Dataset, and MixedSELDDataset.
 
 For each dataset and each split (train / val / test) the script can:
   1. [Smoke test] Build the Dataset (windowed + full-clip), inspect shapes,
@@ -25,20 +25,20 @@ Output directories
 Usage
 -----
     # Run everything (smoke tests + analysis)
-    .venv/bin/python tests/test_seld_datasets.py
+    python auxiliary/datasets/test_seld_datasets.py
 
     # Only dataset analysis + figures (fast, no audio loading for native mode)
-    .venv/bin/python tests/test_seld_datasets.py --analysis-only
+    python auxiliary/datasets/test_seld_datasets.py --analysis-only
 
     # Only smoke tests
-    .venv/bin/python tests/test_seld_datasets.py --smoke-only
+    python auxiliary/datasets/test_seld_datasets.py --smoke-only
 
     # Restrict to one dataset
-    .venv/bin/python tests/test_seld_datasets.py --dataset STARSS23 --analysis-only
-    .venv/bin/python tests/test_seld_datasets.py --dataset TAU-NIGENS2021
+    python auxiliary/datasets/test_seld_datasets.py --dataset STARSS23 --analysis-only
+    python auxiliary/datasets/test_seld_datasets.py --dataset TAU-NIGENS2021
 
     # Full-clip mode for smoke tests (no windowing)
-    .venv/bin/python tests/test_seld_datasets.py --smoke-only --no-window
+    python auxiliary/datasets/test_seld_datasets.py --smoke-only --no-window
 
 Author
 ------
@@ -73,11 +73,16 @@ from datasets import (  # noqa: E402
     SELDDataModule,
     SELDDataset,
 )
+from datasets.tau2019 import TAU2019Dataset
+from datasets.utils   import (MixedSELDDataset,
+                               STARSS_TO_UNIFIED, NIGENS_TO_UNIFIED,
+                               TAU2019_TO_UNIFIED)
 
 # ── Dataset roots ─────────────────────────────────────────────────────────────
 ROOTS = {
     'STARSS23':       _ROOT / 'data' / 'STARSS23',
     'TAU-NIGENS2021': _ROOT / 'data' / 'TAU-NIGENS2021',
+    'TAU2019':        _ROOT / 'data' / 'TAU2019',
 }
 
 # ── Class labels per dataset ──────────────────────────────────────────────────
@@ -92,12 +97,22 @@ CLASS_LABELS = {
         'Female scream', 'Female speech', 'Footsteps', 'Knocking on door',
         'Male scream', 'Male speech', 'Ringing phone', 'Piano',
     ],
+    'TAU2019': [
+        'Clearthroat', 'Cough', 'Doorslam', 'Drawer', 'Keyboard',
+        'Keys drop', 'Knock', 'Laughter', 'Page turn', 'Phone', 'Speech',
+    ],
+}
+
+_TAU2019_CLASS_MAP = {
+    'clearthroat': 0, 'cough': 1, 'doorslam': 2, 'drawer': 3,
+    'keyboard': 4, 'keysDrop': 5, 'knock': 6, 'laughter': 7,
+    'pageturn': 8, 'phone': 9, 'speech': 10,
 }
 
 # ── Shared model parameters ───────────────────────────────────────────────────
-MODEL_SR   = 32000
-HOP_LENGTH = 320
-N_TRACKS   = 5
+MODEL_SR   = 24_000
+HOP_LENGTH = 240
+N_TRACKS   = 3
 
 # ── Official (paper) splits for native-mode analysis ─────────────────────────
 # For STARSS23 the "train" here is the full dev-train (Sony+TAU combined),
@@ -111,9 +126,15 @@ _TAUNIGENS_SPLIT_DIRS = {
     'val':   ['dev-val'],
     'test':  ['dev-test'],
 }
+_TAU2019_SPLIT_NUMS = {   # split numbers for mixed_mode
+    'train': [2, 3, 4],
+    'val':   [1],
+    # 'test' uses eval/metadata_eval/split0_*.csv
+}
 _SPLITS = {
     'STARSS23':       ['train', 'test'],
     'TAU-NIGENS2021': ['train', 'val', 'test'],
+    'TAU2019':        ['train', 'val', 'test'],
 }
 
 # ── Output directories ────────────────────────────────────────────────────────
@@ -132,19 +153,33 @@ def _separator(char='─', width=70):
 def _make_dataset(dataset_name: str, split: str,
                   window_s=None, hop_s=None) -> SELDDataset:
     kwargs = dict(
-        root         = ROOTS[dataset_name],
-        split        = split,
-        model_sr     = MODEL_SR,
-        hop_length   = HOP_LENGTH,
-        n_tracks     = N_TRACKS,
-        window_s     = window_s,
-        hop_s        = hop_s,
-        audio_format = 'foa',
+        root       = ROOTS[dataset_name],
+        split      = split,
+        model_sr   = MODEL_SR,
+        hop_length = HOP_LENGTH,
+        n_tracks   = N_TRACKS,
+        window_s   = window_s,
+        hop_s      = hop_s,
     )
     if dataset_name == 'STARSS23':
         return STARSS23Dataset(**kwargs, val_fraction=0.2, val_seed=42)
     else:
         return TAUNIGENSDataset(**kwargs)
+
+
+def _make_tau2019_dataset(split: str, mixed_mode: bool = True,
+                          fold: int = 1, window_s=None, hop_s=None) -> TAU2019Dataset:
+    return TAU2019Dataset(
+        root       = ROOTS['TAU2019'],
+        split      = split,
+        model_sr   = MODEL_SR,
+        hop_length = HOP_LENGTH,
+        n_tracks   = N_TRACKS,
+        window_s   = window_s,
+        hop_s      = hop_s,
+        fold       = fold,
+        mixed_mode = mixed_mode,
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -293,6 +328,133 @@ def run_smoke_tests(dataset_names: List[str], windowed: bool):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# ── SECTION A2: TAU2019 SMOKE TEST ────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+def run_tau2019_smoke_tests(windowed: bool):
+    """Smoke tests for TAU2019Dataset (standalone + mixed mode)."""
+    no_tau = not ROOTS['TAU2019'].exists()
+    window_s = 10.0 if windowed else None
+    hop_s    = 5.0  if windowed else None
+    mode     = 'windowed' if windowed else 'full-clip'
+
+    print(f"\n{'═'*70}")
+    print(f"  TAU2019 SMOKE TEST  ({'windowed 10s/50%hop' if windowed else 'full-clip'})")
+    print(f"{'═'*70}")
+
+    if no_tau:
+        print('  [SKIP] TAU2019 data not found at', ROOTS['TAU2019'])
+        return
+
+    # ── Mixed mode: shape + resample check ───────────────────────────────────
+    for split in ('train', 'val', 'test'):
+        print(f"\n  Building mixed_mode split={split} ({mode}) …", flush=True)
+        t0 = time.perf_counter()
+        ds = _make_tau2019_dataset(split, mixed_mode=True,
+                                   window_s=window_s, hop_s=hop_s)
+        build_ms = (time.perf_counter() - t0) * 1e3
+        print(f"  → {len(ds):,} items ({len(ds.clips)} clips) in {build_ms:.0f} ms")
+
+        wav, tgt = ds[0]
+        print(f"  Sample[0]  wav={tuple(wav.shape)}  tgt={tuple(tgt.shape)}")
+        assert wav.shape[0] == 4, f"Expected 4 FOA channels, got {wav.shape[0]}"
+        assert tgt.shape[1] == N_TRACKS, f"Expected {N_TRACKS} tracks, got {tgt.shape[1]}"
+        assert tgt.shape[2] == 11, f"Expected 11 TAU2019 classes, got {tgt.shape[2]}"
+        assert tgt.shape[3] == 3, f"Expected 3 xyz DOA dims, got {tgt.shape[3]}"
+        assert ds.output_sr == 24000, f"Expected output_sr=24000, got {ds.output_sr}"
+        if windowed:
+            expected_samples = round(window_s * 24_000)
+            expected_mel     = 1 + expected_samples // HOP_LENGTH
+            assert wav.shape[-1] == expected_samples, \
+                f"wav samples: {wav.shape[-1]} vs {expected_samples}"
+            assert tgt.shape[0] == expected_mel, \
+                f"T_mel: {tgt.shape[0]} vs {expected_mel}"
+
+        _test_dataloader(ds, 'TAU2019', split, windowed)
+
+    # ── Expected clip counts in mixed mode ────────────────────────────────────
+    print(f"\n  Checking expected clip counts (mixed mode, full-clip) …")
+    ds_tr = _make_tau2019_dataset('train', mixed_mode=True)
+    ds_vl = _make_tau2019_dataset('val',   mixed_mode=True)
+    ds_ts = _make_tau2019_dataset('test',  mixed_mode=True)
+    assert len(ds_tr.clips) == 300, f"train clips: {len(ds_tr.clips)}"
+    assert len(ds_vl.clips) == 100, f"val clips: {len(ds_vl.clips)}"
+    assert len(ds_ts.clips) == 100, f"test clips: {len(ds_ts.clips)}"
+    print(f"  OK: train={len(ds_tr.clips)} val={len(ds_vl.clips)} test={len(ds_ts.clips)}")
+
+    # ── Standalone mode: fold 1 ───────────────────────────────────────────────
+    print(f"\n  Checking standalone fold=1 shapes …")
+    for split in ('train', 'val', 'test'):
+        ds = _make_tau2019_dataset(split, mixed_mode=False, fold=1,
+                                   window_s=window_s, hop_s=hop_s)
+        wav, tgt = ds[0]
+        assert tgt.shape[2] == 11, f"fold1/{split}: n_classes={tgt.shape[2]}"
+        print(f"  fold1/{split}: {len(ds):,} items  tgt={tuple(tgt.shape)}")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── SECTION A3: MIXED SELD SMOKE TEST ────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+def run_mixed_seld_smoke_tests(windowed: bool):
+    """Smoke tests for MixedSELDDataset (3 datasets, 15 unified classes)."""
+    no_all = not all(p.exists() for p in ROOTS.values())
+    window_s = 10.0 if windowed else None
+    hop_s    = 5.0  if windowed else None
+    mode     = 'windowed' if windowed else 'full-clip'
+
+    print(f"\n{'═'*70}")
+    print(f"  MIXED SELD SMOKE TEST  ({'windowed 10s/50%hop' if windowed else 'full-clip'})")
+    print(f"{'═'*70}")
+
+    if no_all:
+        missing = [k for k, p in ROOTS.items() if not p.exists()]
+        print(f"  [SKIP] Missing dataset roots: {missing}")
+        return
+
+    for split in ('train', 'val', 'test'):
+        print(f"\n  Building MixedSELDDataset split={split} ({mode}) …", flush=True)
+        t0 = time.perf_counter()
+
+        kw = dict(model_sr=MODEL_SR, hop_length=HOP_LENGTH, n_tracks=N_TRACKS,
+                  window_s=window_s, hop_s=hop_s)
+        starss  = STARSS23Dataset(root=ROOTS['STARSS23'], split=split,
+                                  val_fraction=0.2, val_seed=42, **kw)
+        nigens  = TAUNIGENSDataset(root=ROOTS['TAU-NIGENS2021'], split=split, **kw)
+        tau2019 = TAU2019Dataset(root=ROOTS['TAU2019'], split=split,
+                                 mixed_mode=True, **kw)
+        mixed = MixedSELDDataset(
+            datasets=[starss, nigens, tau2019],
+            mappings=[STARSS_TO_UNIFIED, NIGENS_TO_UNIFIED, TAU2019_TO_UNIFIED],
+        )
+
+        build_ms = (time.perf_counter() - t0) * 1e3
+        expected = len(starss) + len(nigens) + len(tau2019)
+        assert len(mixed) == expected, \
+            f"Mixed len: {len(mixed)} vs {expected} (starss={len(starss)}, " \
+            f"nigens={len(nigens)}, tau2019={len(tau2019)})"
+
+        print(f"  → {len(mixed):,} items in {build_ms:.0f} ms "
+              f"(starss={len(starss)}, nigens={len(nigens)}, tau2019={len(tau2019)})")
+
+        wav, tgt = mixed[0]
+        print(f"  Sample[0]  wav={tuple(wav.shape)}  tgt={tuple(tgt.shape)}")
+        assert wav.shape[0] == 4, f"Expected 4 FOA channels, got {wav.shape[0]}"
+        assert tgt.shape[1] == N_TRACKS, f"Expected {N_TRACKS} tracks, got {tgt.shape[1]}"
+        assert tgt.shape[2] == 15, f"Expected 15 unified classes, got {tgt.shape[2]}"
+        assert tgt.shape[3] == 3, f"Expected 3 xyz DOA dims, got {tgt.shape[3]}"
+
+        # Unit-vector sanity check on active DOA frames
+        import torch
+        norms  = tgt.norm(dim=-1)   # (T_mel, N_tracks, 15)
+        active = norms > 0
+        if active.any():
+            err = (norms[active] - 1.0).abs().max().item()
+            assert err < 0.01, f"DOA unit-sphere error too large: {err:.4f}"
+            print(f"  DOA unit-norm max error: {err:.5f}  (OK)")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # ── SECTION B: ANALYSIS — TABLE 2 + DOA FIGURES ──────────────────────────────
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -328,6 +490,129 @@ def _get_native_csv_files(dataset_name: str, split: str) -> List[Path]:
     for sub in subdirs:
         paths.extend(sorted((meta_root / sub).glob('*.csv')))
     return paths
+
+
+def _parse_raw_tau2019(csv_path: Path) -> List[Tuple[int, int, int, float, float]]:
+    """
+    Read a TAU2019 annotation CSV (onset/offset format with headers).
+
+    CSV columns: sound_event_recording, start_time, end_time, ele, azi, dist
+    Returns: list of (frame_100ms, class_idx, source_idx, az_deg, el_deg)
+    where frames span [start_time, end_time) at 100 ms resolution.
+    """
+    import csv as _csv
+    events = []
+    instance_counter: Dict[int, int] = defaultdict(int)
+    with open(csv_path, newline='') as fh:
+        for row in _csv.DictReader(fh):
+            label = row['sound_event_recording']
+            if label not in _TAU2019_CLASS_MAP:
+                continue
+            cls_idx = _TAU2019_CLASS_MAP[label]
+            start_f = int(float(row['start_time']) / 0.1)
+            end_f   = int(float(row['end_time'])   / 0.1)
+            az      = float(row['azi'])
+            el      = float(row['ele'])
+            src_idx = instance_counter[cls_idx]
+            instance_counter[cls_idx] += 1
+            for f in range(start_f, end_f + 1):
+                events.append((f, cls_idx, src_idx, az, el))
+    return events
+
+
+def _get_native_csv_files_tau2019(split: str) -> List[Path]:
+    """Return annotation CSV paths for TAU2019 mixed_mode split."""
+    tau_root  = ROOTS['TAU2019']
+    meta_dev  = tau_root / 'dev' / 'metadata_dev'
+    meta_eval = tau_root / 'eval' / 'metadata_eval'
+    paths: List[Path] = []
+    if split == 'test':
+        if meta_eval.exists():
+            paths.extend(sorted(meta_eval.glob('split0_*.csv')))
+    else:
+        for sn in _TAU2019_SPLIT_NUMS[split]:
+            paths.extend(sorted(meta_dev.glob(f'split{sn}_*.csv')))
+    return paths
+
+
+def _native_stats_tau2019(csv_paths: List[Path]) -> Tuple[Dict, Dict]:
+    """
+    Compute TABLE 2-style statistics from TAU2019 onset/offset CSVs.
+    Reuses the same structure as _native_stats but with _parse_raw_tau2019.
+    """
+    n_classes = 11
+    total_frames_100ms = 0
+    cls_frames_active: Dict[int, set] = defaultdict(set)
+    cls_frame_srcs: Dict[int, Dict[int, set]] = defaultdict(lambda: defaultdict(set))
+    doa_data: Dict[int, Dict[str, list]] = {c: {'az': [], 'el': []} for c in range(n_classes)}
+    frame_offset = 0
+
+    for csv_p in csv_paths:
+        events = _parse_raw_tau2019(csv_p)
+        if not events:
+            continue
+        clip_n_frames = max(e[0] for e in events) + 1
+        total_frames_100ms += clip_n_frames
+        for (frame, cls, src, az, el) in events:
+            abs_frame = frame_offset + frame
+            cls_frames_active[cls].add(abs_frame)
+            cls_frame_srcs[cls][abs_frame].add(src)
+            doa_data[cls]['az'].append(az)
+            doa_data[cls]['el'].append(el)
+        frame_offset += clip_n_frames
+
+    # Reuse the per-class stat computation logic
+    table2: Dict = {}
+    for cls in range(n_classes):
+        active_set = cls_frames_active[cls]
+        n_active = len(active_set)
+        if total_frames_100ms == 0 or n_active == 0:
+            table2[cls] = {'frame_coverage_pct': 0.0, 'max_poly': 0,
+                           'mean_poly': 0.0, 'poly_dist': [0.0]*4}
+            continue
+        frame_coverage_pct = 100.0 * n_active / total_frames_100ms
+        poly_counts = [len(cls_frame_srcs[cls][f]) for f in active_set]
+        max_poly  = int(np.max(poly_counts))
+        mean_poly = float(np.mean(poly_counts))
+        poly_dist = []
+        for k in range(1, 5):
+            cnt = (sum(1 for p in poly_counts if p == k)
+                   if k < 4 else sum(1 for p in poly_counts if p >= 4))
+            poly_dist.append(100.0 * cnt / n_active)
+        table2[cls] = {'frame_coverage_pct': frame_coverage_pct, 'max_poly': max_poly,
+                       'mean_poly': mean_poly, 'poly_dist': poly_dist}
+
+    all_active_frames: set = set()
+    for cls in range(n_classes):
+        all_active_frames |= cls_frames_active[cls]
+    global_frame_cov = 100.0 * len(all_active_frames) / max(total_frames_100ms, 1)
+    global_frame_poly: Dict[int, set] = defaultdict(set)
+    frame_offset2 = 0
+    for csv_p in csv_paths:
+        events = _parse_raw_tau2019(csv_p)
+        if not events:
+            continue
+        clip_n_frames = max(e[0] for e in events) + 1
+        for (frame, cls, src, az, el) in events:
+            global_frame_poly[frame_offset2 + frame].add((cls, src))
+        frame_offset2 += clip_n_frames
+    global_poly_counts = [len(v) for v in global_frame_poly.values() if v]
+    if global_poly_counts:
+        global_max_poly  = int(np.max(global_poly_counts))
+        global_mean_poly = float(np.mean(global_poly_counts))
+        n_act = len(global_poly_counts)
+        global_poly_dist = []
+        for k in range(1, 5):
+            cnt = (sum(1 for p in global_poly_counts if p == k)
+                   if k < 4 else sum(1 for p in global_poly_counts if p >= 4))
+            global_poly_dist.append(100.0 * cnt / max(n_act, 1))
+    else:
+        global_max_poly, global_mean_poly = 0, 0.0
+        global_poly_dist = [0.0]*4
+    table2['global'] = {'frame_coverage_pct': global_frame_cov, 'max_poly': global_max_poly,
+                        'mean_poly': global_mean_poly, 'poly_dist': global_poly_dist}
+
+    return table2, doa_data
 
 
 def _native_stats(csv_paths: List[Path], n_classes: int, n_cols: int = 6
@@ -1112,6 +1397,68 @@ def run_analysis(dataset_names: List[str],
     _plot_overall_comparison(comparison_data, figures_dir)
 
 
+# ── B6b. TAU2019 analysis orchestrator ───────────────────────────────────────
+
+def run_tau2019_analysis(results_dir: Path, figures_dir: Path):
+    """Native CSV + model TABLE 2 analysis and DOA figure for TAU2019."""
+    if not ROOTS['TAU2019'].exists():
+        print(f"\n[SKIP] TAU2019 data not found at {ROOTS['TAU2019']}")
+        return
+
+    results_dir.mkdir(parents=True, exist_ok=True)
+    figures_dir.mkdir(parents=True, exist_ok=True)
+
+    n_classes    = 11
+    class_labels = CLASS_LABELS['TAU2019']
+    splits       = _SPLITS['TAU2019']
+
+    print(f"\n{'═'*70}")
+    print(f"  ANALYSIS: TAU2019")
+    print(f"{'═'*70}")
+
+    # ── Native mode ───────────────────────────────────────────────────────────
+    doa_data_train: Optional[Dict] = None
+    for split in splits:
+        print(f"\n  ── Native mode | {split} ──────────────────────────────")
+        csv_files = _get_native_csv_files_tau2019(split)
+        print(f"  Parsing {len(csv_files)} CSV files …", flush=True)
+        t0 = time.perf_counter()
+        table2_nat, doa_data = _native_stats_tau2019(csv_files)
+        elapsed = (time.perf_counter() - t0) * 1e3
+        print(f"  Done in {elapsed:.0f} ms")
+
+        _print_table2(table2_nat, class_labels, 'TAU2019', split, 'native')
+
+        out_csv = results_dir / f'TAU2019_table2_native_{split}.csv'
+        _save_table2_csv(table2_nat, class_labels, out_csv)
+
+        if split == 'train':
+            doa_data_train = doa_data
+            out_fig = figures_dir / 'TAU2019_doa_analysis.svg'
+            print(f"  Generating DOA figure …", flush=True)
+            _plot_doa_analysis(doa_data, class_labels, 'TAU2019', out_fig)
+
+    # ── Model mode (full-clip, mel-frame resolution) ──────────────────────────
+    for split in splits:
+        print(f"\n  ── Model mode | {split} ───────────────────────────────")
+        print(f"  Building TAU2019Dataset (full-clip, mixed_mode) …", flush=True)
+        t0 = time.perf_counter()
+        ds = _make_tau2019_dataset(split, mixed_mode=True)
+        build_ms = (time.perf_counter() - t0) * 1e3
+        print(f"  → {len(ds):,} clips in {build_ms:.0f} ms")
+
+        print(f"  Computing model stats over {len(ds)} items …", flush=True)
+        t0 = time.perf_counter()
+        table2_mod = _model_stats(ds, n_classes)
+        elapsed = (time.perf_counter() - t0) * 1e3
+        print(f"  Done in {elapsed:.0f} ms")
+
+        _print_table2(table2_mod, class_labels, 'TAU2019', split, 'model')
+
+        out_csv = results_dir / f'TAU2019_table2_model_{split}.csv'
+        _save_table2_csv(table2_mod, class_labels, out_csv)
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Main
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1121,8 +1468,10 @@ def main():
         description='SELD Dataset smoke-test, TABLE 2 analysis and DOA figures'
     )
     parser.add_argument(
-        '--dataset', choices=['STARSS23', 'TAU-NIGENS2021', 'both'],
-        default='both', help='Which dataset to test/analyse (default: both)'
+        '--dataset',
+        choices=['STARSS23', 'TAU-NIGENS2021', 'TAU2019', 'Mixed', 'all'],
+        default='all',
+        help='Which dataset to test/analyse (default: all)',
     )
     parser.add_argument(
         '--no-window', action='store_true',
@@ -1139,20 +1488,50 @@ def main():
     )
     args = parser.parse_args()
 
-    names = (
-        ['STARSS23', 'TAU-NIGENS2021'] if args.dataset == 'both'
-        else [args.dataset]
-    )
-
     run_smoke = not args.analysis_only
     run_anal  = not args.smoke_only
     windowed  = not args.no_window
 
-    if run_smoke:
-        run_smoke_tests(names, windowed)
+    ds_filter = args.dataset
 
+    # ── Smoke tests ───────────────────────────────────────────────────────────
+    if run_smoke:
+        smoke_names = (
+            ['STARSS23', 'TAU-NIGENS2021']
+            if ds_filter in ('STARSS23', 'TAU-NIGENS2021')
+            else ['STARSS23', 'TAU-NIGENS2021']
+            if ds_filter == 'all'
+            else []
+        )
+        if ds_filter == 'STARSS23':
+            smoke_names = ['STARSS23']
+        elif ds_filter == 'TAU-NIGENS2021':
+            smoke_names = ['TAU-NIGENS2021']
+        elif ds_filter in ('all', 'TAU2019', 'Mixed'):
+            smoke_names = ['STARSS23', 'TAU-NIGENS2021']
+
+        if smoke_names:
+            run_smoke_tests(smoke_names, windowed)
+
+        if ds_filter in ('TAU2019', 'all'):
+            run_tau2019_smoke_tests(windowed)
+
+        if ds_filter in ('Mixed', 'all'):
+            run_mixed_seld_smoke_tests(windowed)
+
+    # ── Analysis ──────────────────────────────────────────────────────────────
     if run_anal:
-        run_analysis(names, RESULTS_DIR, FIGURES_DIR)
+        anal_names = []
+        if ds_filter in ('STARSS23', 'all'):
+            anal_names.append('STARSS23')
+        if ds_filter in ('TAU-NIGENS2021', 'all'):
+            anal_names.append('TAU-NIGENS2021')
+
+        if anal_names:
+            run_analysis(anal_names, RESULTS_DIR, FIGURES_DIR)
+
+        if ds_filter in ('TAU2019', 'all'):
+            run_tau2019_analysis(RESULTS_DIR, FIGURES_DIR)
 
 
 if __name__ == '__main__':
