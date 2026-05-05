@@ -10,10 +10,10 @@ input:
   hop_length:  240
   compute_iv:  true
 
-# ── Early stage: ResNetBlock×3 (stride=1,1) + learned freq projection ─────────
+# ── Early stage: ResNetBlock×2 (stride=1,1) + learned freq projection ─────────
 spatial_early:
   type:           resnet_block
-  n_layers:       3             # channel schedule: [256, 128, 64]
+  n_layers:       2             # channel schedule: [128, 64]
   out_channels:   64            # final ResNet width
   d_model:        128           # projection output — same as Conformer d_model
   use_msca:       true
