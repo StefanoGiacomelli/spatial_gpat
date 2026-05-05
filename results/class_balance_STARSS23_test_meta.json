@@ -1,0 +1,8 @@
+{
+  "dataset": "STARSS23",
+  "split": "test",
+  "n_clips": 78,
+  "n_windows": 2316,
+  "window_s": 10.0,
+  "hop_s": 5.0
+}

@@ -54,6 +54,7 @@ from spatial_modules import (
     CrossStitching,
     TCN,
 )
+from .spec_augment import SpecAugment
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -136,6 +137,67 @@ class _ConformerEarlyStage(nn.Module):
         return x
 
 
+class _ResNetEarlyStage(nn.Module):
+    """ResNet early stage: full-resolution ResNetBlocks + learned freq projection.
+
+    Pipeline:
+        (B, C_in, T, F)
+          → ResNetBlock[MSCA, stride=(1,1)] × n_layers  → (B, out_ch, T, F)
+          → AdaptiveAvgPool2d(None, 4)                   → (B, out_ch, T, 4)
+          → Conv2d(out_ch → d_model, kernel=(1,4))       → (B, d_model, T, 1)
+          → squeeze + permute + PositionalEncoder        → (B, T, d_model)
+
+    Channel schedule (progressive halving, NASModel-faithful):
+        n_layers=3, out_channels=64 → [256, 128, 64] (in → first, last → out_ch)
+    """
+
+    def __init__(
+        self,
+        in_channels:    int,
+        n_layers:       int,
+        out_channels:   int,
+        d_model:        int,
+        use_msca:       bool  = True,
+        msca_reduction: int   = 4,
+        dropout:        float = 0.0,
+        pe_max_len:     int   = 2048,
+    ):
+        super().__init__()
+
+        # Progressive-halving channel schedule (largest channel first)
+        schedule = [out_channels * (2 ** i) for i in range(n_layers - 1, -1, -1)]
+
+        blocks, ch_in = [], in_channels
+        for ch_out in schedule:
+            blocks.append(ResNetBlock(
+                in_channels    = ch_in,
+                out_channels   = ch_out,
+                stride         = (1, 1),
+                use_msca       = use_msca,
+                msca_reduction = msca_reduction,
+                dropout        = dropout,
+            ))
+            ch_in = ch_out
+        self.blocks = nn.ModuleList(blocks)
+
+        # Freq collapse: same learned projection as _ConformerEarlyStage
+        self.freq_pool = nn.AdaptiveAvgPool2d((None, 4))
+        self.freq_proj = nn.Conv2d(out_channels, d_model, kernel_size=(1, 4), bias=True)
+
+        self.pe = PositionalEncoder(d_model, max_len=pe_max_len, pe_type='t')
+
+        self.out_channels = d_model   # downstream expects d_model
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        for blk in self.blocks:
+            x = blk(x)                              # (B, out_ch, T, F) — no freq reduction
+        x = self.freq_pool(x)                       # (B, out_ch, T, 4)
+        x = self.freq_proj(x).squeeze(-1)           # (B, d_model, T)
+        x = self.pe(x)                              # sinusoidal PE along T
+        x = x.permute(0, 2, 1)                      # (B, T, d_model)
+        return x
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # BUILDER HELPERS
 # ══════════════════════════════════════════════════════════════════════════════
@@ -143,27 +205,51 @@ class _ConformerEarlyStage(nn.Module):
 def _build_spatial_early(
     cfg: dict,
     in_channels: int,
-) -> Tuple[_ConformerEarlyStage, int]:
-    """Build the CNN-Conformer early stage. Returns (module, d_model)."""
+) -> Tuple[nn.Module, int]:
+    """Build the early stage. Returns (module, d_model).
+
+    Supported types:
+      'conformer'   — CNN freq-reduction + ConformerBlock stack (default)
+      'resnet_block' — full-resolution ResNetBlocks + learned freq projection
+    """
     typ = cfg.get('type', 'conformer')
-    if typ != 'conformer':
-        raise ValueError(
-            f'[StandaloneSELD] spatial_early.type must be "conformer", got {typ!r}.'
+
+    if typ == 'conformer':
+        d_model = cfg.get('d_model', 128)
+        module  = _ConformerEarlyStage(
+            in_channels    = in_channels,
+            d_model        = d_model,
+            n_conf_layers  = cfg.get('n_conf_layers', 4),
+            n_heads        = cfg.get('n_heads', 4),
+            ffn_expansion  = cfg.get('ffn_expansion', 4),
+            conv_kernel    = cfg.get('conv_kernel', 31),
+            dropout        = cfg.get('dropout', 0.0),
+            use_msca       = cfg.get('use_msca', True),
+            msca_reduction = cfg.get('msca_reduction', 4),
+            pe_max_len     = cfg.get('pe_max_len', 2048),
         )
-    d_model = cfg.get('d_model', 128)
-    module  = _ConformerEarlyStage(
-        in_channels    = in_channels,
-        d_model        = d_model,
-        n_conf_layers  = cfg.get('n_conf_layers', 4),
-        n_heads        = cfg.get('n_heads', 4),
-        ffn_expansion  = cfg.get('ffn_expansion', 4),
-        conv_kernel    = cfg.get('conv_kernel', 31),
-        dropout        = cfg.get('dropout', 0.0),
-        use_msca       = cfg.get('use_msca', True),
-        msca_reduction = cfg.get('msca_reduction', 4),
-        pe_max_len     = cfg.get('pe_max_len', 2048),
-    )
-    return module, d_model
+        return module, d_model
+
+    elif typ == 'resnet_block':
+        out_channels = cfg.get('out_channels', 64)
+        d_model      = cfg.get('d_model', 128)
+        module       = _ResNetEarlyStage(
+            in_channels    = in_channels,
+            n_layers       = cfg.get('n_layers', 3),
+            out_channels   = out_channels,
+            d_model        = d_model,
+            use_msca       = cfg.get('use_msca', True),
+            msca_reduction = cfg.get('msca_reduction', 4),
+            dropout        = cfg.get('dropout', 0.0),
+            pe_max_len     = cfg.get('pe_max_len', 2048),
+        )
+        return module, d_model
+
+    else:
+        raise ValueError(
+            f'[StandaloneSELD] spatial_early.type must be "conformer" or "resnet_block", '
+            f'got {typ!r}.'
+        )
 
 
 def _build_spatial_late(
@@ -437,6 +523,18 @@ class StandaloneSELDModel(nn.Module):
         self.sed_branch = StandaloneSELDBranch(head_type='sed', **branch_kwargs)
         self.doa_branch = StandaloneSELDBranch(head_type='doa', **branch_kwargs)
 
+        # ── Optional SpecAugment (SED branch only, training only) ─────────────
+        sa_cfg = cfg.get('augmentation', {}).get('spec_augment', {})
+        if sa_cfg.get('enabled', False):
+            self.spec_aug: Optional[SpecAugment] = SpecAugment(
+                n_freq_masks    = sa_cfg.get('n_freq_masks',    2),
+                freq_mask_param = sa_cfg.get('freq_mask_param', 20),
+                n_time_masks    = sa_cfg.get('n_time_masks',    2),
+                time_mask_param = sa_cfg.get('time_mask_param', 30),
+            )
+        else:
+            self.spec_aug = None
+
         # ── CrossStitching layers ─────────────────────────────────────────────
         # CS_EARLY operates on (B, T, d_early) via permute to (B, d_early, T)
         # CS_LATE  operates on (B, T, N*d_model) flattened, via permute to (B, D, T)
@@ -456,10 +554,17 @@ class StandaloneSELDModel(nn.Module):
             f'  n_mics={n_mics}  c_in={c_in_spat}'
             f'  n_fft={n_fft}  hop={hop_length}'
         )
+        _early_type = se_cfg.get('type', 'conformer')
+        if _early_type == 'resnet_block':
+            _n  = se_cfg.get('n_layers', 3)
+            _ch = se_cfg.get('out_channels', 64)
+            _early_str = f'resnet(ResNet×{_n} ch_schedule→{_ch} + proj→{d_early})'
+        else:
+            _early_str = f'conformer(CNN×2 + Conf×{se_cfg.get("n_conf_layers", 4)})'
         print(
-            f'  early=conformer(CNN×2 + Conf×{se_cfg.get("n_conf_layers",4)})'
+            f'  early={_early_str}'
             f'  d_model={d_early}'
-            f'  late=TrackTF×{sl_cfg.get("n_layers",2)}'
+            f'  late=TrackTF×{sl_cfg.get("n_layers", 2)}'
             f'  n_tracks={n_tracks}  d_model={d_model}'
         )
         print(
@@ -492,6 +597,10 @@ class StandaloneSELDModel(nn.Module):
         # ── Stage 1: per-branch InstanceNorm ─────────────────────────────────
         S_sed = self.sed_branch.forward_norm(S)
         S_doa = self.doa_branch.forward_norm(S)
+
+        # SpecAugment on SED branch only (training mode only, DOA unaffected)
+        if self.spec_aug is not None:
+            S_sed = self.spec_aug(S_sed)
 
         # ── Stage 2: CNN frontend + Conformer → (B, T, d_early) ──────────────
         e_sed = self.sed_branch.forward_early(S_sed)

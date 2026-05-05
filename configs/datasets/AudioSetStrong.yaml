@@ -1,3 +1,5 @@
+# AudioSet-Strong pre-training configuration
+
 data:
   audio_root_train:      data/audioset-qiuqiangkong/balanced_train_segments
   audio_root_unbalanced: data/audioset-qiuqiangkong/unbalanced_strong
@@ -5,19 +7,19 @@ data:
   strong_tsv_train:      data/audioset-qiuqiangkong/metadata/audioset_train_strong.tsv
   strong_tsv_test:       data/audioset-qiuqiangkong/metadata/audioset_eval_strong.tsv
   class_map:             configs/datasets/audioset_strong_label_map.csv
-  val_fraction:          0.2
+  val_fraction:          0.2     # fraction of train used for validation (stratified)
   val_seed:              42
   num_workers:           4
-  overlap_threshold:     0.0
-  hlp_enabled:           true
+  overlap_threshold:     0.0     # min temporal overlap to count annotation as positive
+  hlp_enabled:           true    # hierarchical label propagation from ontology (audioset_strong_hlp.pt)
   hlp_table_path:        configs/datasets/audioset_strong_hlp.pt
 
 augmentation:
   enabled:      false
-  p_gain:       0.3
-  gain_db:      6.0
-  p_noise:      0.3
-  noise_snr_db: 35.0
+  p_gain:       0.3              # probability of amplitude gain augmentation
+  gain_db:      6.0              # symmetric gain range ±gain_db applied in dB
+  p_noise:      0.3              # probability of white noise injection
+  noise_snr_db: 35.0             # noise SNR in dB (higher = quieter noise)
 
 semantic:
   pretrained_class_map:      data/audioset-qiuqiangkong/metadata/class_labels_indices.csv

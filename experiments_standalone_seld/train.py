@@ -66,6 +66,7 @@ from experiments_nas_seld.loss import tPITLoss, SELDMetrics
 _ORIG_SR = {
     'STARSS23':       24000,
     'TAU-NIGENS2021': 24000,
+    'TAU2019':        24000,
     'MixedSELD':      24000,
 }
 
@@ -116,6 +117,14 @@ class StandaloneSELDModule(L.LightningModule):
                     pos_weight = compute_pos_weights(Path(root), n_classes=12)
                     # zero-pad to 13 classes (Knock class absent in TAU)
                     pos_weight = F.pad(pos_weight, (0, 1), value=1.0)
+            elif dataset_mode == 'TAU2019':
+                root = cfg.get('data', {}).get('root_path')
+                if root:
+                    try:
+                        from datasets.tau2019 import compute_pos_weights as _cpw_tau2019
+                        pos_weight = _cpw_tau2019(Path(root), n_classes=n_classes)
+                    except (ImportError, AttributeError):
+                        pass  # compute_pos_weights not available for TAU2019 — skip
             elif dataset_mode == 'MixedSELD':
                 root = cfg.get('data', {}).get('starss_root')
                 if root:
@@ -128,8 +137,10 @@ class StandaloneSELDModule(L.LightningModule):
                 print(f'[StandaloneSELDModule] pos_weight  '
                       f'min={pos_weight.min():.2f}  max={pos_weight.max():.1f}  '
                       f'cap={pw_cap}')
+        except (ImportError, AttributeError):
+            pass   # compute_pos_weights not implemented for this dataset — skip silently
         except Exception as exc:
-            print(f'[StandaloneSELDModule] pos_weight unavailable: {exc}')
+            print(f'[StandaloneSELDModule] pos_weight error: {exc}')
 
         beta_sed    = float(train_cfg.get('beta_sed', 0.6))
         focal_gamma = float(train_cfg.get('focal_gamma', 0.0))
@@ -140,9 +151,10 @@ class StandaloneSELDModule(L.LightningModule):
             focal_gamma = focal_gamma,
         )
 
-        self.metrics_val    = SELDMetrics(angle_thresh=angle_thresh)
-        self.metrics_starss = SELDMetrics(angle_thresh=angle_thresh)
-        self.metrics_tau    = SELDMetrics(angle_thresh=angle_thresh)
+        self.metrics_val      = SELDMetrics(angle_thresh=angle_thresh)
+        self.metrics_starss   = SELDMetrics(angle_thresh=angle_thresh)
+        self.metrics_tau      = SELDMetrics(angle_thresh=angle_thresh)
+        self.metrics_tau2019  = SELDMetrics(angle_thresh=angle_thresh)
 
         # JSON metrics log
         self._metrics_path: Optional[Path] = None
@@ -229,6 +241,14 @@ class StandaloneSELDModule(L.LightningModule):
     # Test — two dataloaders (STARSS23 idx=0, TAU-NIGENS idx=1)
     # ------------------------------------------------------------------
 
+    # Maps dataset_mode → (log_prefix, accumulator_attr)
+    _TEST_PREFIX = {
+        'STARSS23':       'test_starss',
+        'TAU-NIGENS2021': 'test_tau',
+        'TAU2019':        'test_tau2019',
+        'MixedSELD':      None,   # multi-loader: prefix determined by dataloader_idx
+    }
+
     def test_step(
         self,
         batch: Tuple[torch.Tensor, torch.Tensor],
@@ -236,80 +256,129 @@ class StandaloneSELDModule(L.LightningModule):
         dataloader_idx: int = 0,
     ) -> None:
         x, tgt = batch
-
-        # TAU-NIGENS targets have C=12; pad to 13 so model output matches
-        if tgt.shape[3] == 12:
-            tgt = F.pad(tgt, (0, 0, 0, 1))   # (B, T, N, 12, 3) → (B, T, N, 13, 3)
+        dataset_mode = self.hparams['cfg']['training'].get('dataset_mode', 'STARSS23')
 
         act_logits, doa_tanh = self.model(x, orig_sr=self.orig_sr)
+
+        # Pad class dim when target has fewer classes than model output
+        if tgt.shape[3] < act_logits.shape[3]:
+            pad = act_logits.shape[3] - tgt.shape[3]
+            tgt = F.pad(tgt, (0, 0, 0, pad))
 
         T = min(act_logits.shape[1], tgt.shape[1])
         act_logits = act_logits[:, :T]
         doa_tanh   = doa_tanh[:, :T]
         tgt        = tgt[:, :T]
 
-        if dataloader_idx == 0:
-            self.metrics_starss.update(act_logits, doa_tanh, tgt)
+        if dataset_mode == 'MixedSELD':
+            # Three DataLoaders: idx=0 → STARSS23, idx=1 → TAU-NIGENS, idx=2 → TAU2019
+            if dataloader_idx == 0:
+                self.metrics_starss.update(act_logits, doa_tanh, tgt)
+            elif dataloader_idx == 1:
+                self.metrics_tau.update(act_logits, doa_tanh, tgt)
+            else:
+                self.metrics_tau2019.update(act_logits, doa_tanh, tgt)
         else:
-            self.metrics_tau.update(act_logits, doa_tanh, tgt)
+            # Single DataLoader — always accumulate into metrics_starss
+            self.metrics_starss.update(act_logits, doa_tanh, tgt)
 
     def on_test_epoch_end(self) -> None:
-        starss = self.metrics_starss.compute()
-        self.metrics_starss.reset()
-        tau    = self.metrics_tau.compute()
-        self.metrics_tau.reset()
+        dataset_mode = self.hparams['cfg']['training'].get('dataset_mode', 'STARSS23')
+        prefix = self._TEST_PREFIX.get(dataset_mode, 'test_starss')
 
-        for key, val in starss.items():
-            self.log(f'test_starss/{key}', float(val), on_epoch=True, sync_dist=True)
-        for key, val in tau.items():
-            self.log(f'test_tau/{key}', float(val), on_epoch=True, sync_dist=True)
+        if dataset_mode == 'MixedSELD':
+            starss   = self.metrics_starss.compute();   self.metrics_starss.reset()
+            tau      = self.metrics_tau.compute();      self.metrics_tau.reset()
+            tau2019  = self.metrics_tau2019.compute();  self.metrics_tau2019.reset()
 
-        if self._metrics_path is not None:
-            test_dict: dict = {'epoch': 'test'}
-            test_dict.update({f'test_starss/{k}': float(v) for k, v in starss.items()})
-            test_dict.update({f'test_tau/{k}': float(v) for k, v in tau.items()})
-            self._epoch_metrics_log.append(test_dict)
-            self._flush_metrics_log()
+            for key, val in starss.items():
+                self.log(f'test_starss/{key}',   float(val), on_epoch=True, sync_dist=True)
+            for key, val in tau.items():
+                self.log(f'test_tau/{key}',      float(val), on_epoch=True, sync_dist=True)
+            for key, val in tau2019.items():
+                self.log(f'test_tau2019/{key}',  float(val), on_epoch=True, sync_dist=True)
+
+            if self._metrics_path is not None:
+                test_dict: dict = {'epoch': 'test'}
+                test_dict.update({f'test_starss/{k}':  float(v) for k, v in starss.items()})
+                test_dict.update({f'test_tau/{k}':     float(v) for k, v in tau.items()})
+                test_dict.update({f'test_tau2019/{k}': float(v) for k, v in tau2019.items()})
+                self._epoch_metrics_log.append(test_dict)
+                self._flush_metrics_log()
+        else:
+            results = self.metrics_starss.compute()
+            self.metrics_starss.reset()
+
+            for key, val in results.items():
+                self.log(f'{prefix}/{key}', float(val), on_epoch=True, sync_dist=True)
+
+            if self._metrics_path is not None:
+                test_dict = {'epoch': 'test'}
+                test_dict.update({f'{prefix}/{k}': float(v) for k, v in results.items()})
+                self._epoch_metrics_log.append(test_dict)
+                self._flush_metrics_log()
 
     # ------------------------------------------------------------------
     # Optimizers
     # ------------------------------------------------------------------
 
     def configure_optimizers(self):
-        """Adam + linear warmup + cosine annealing."""
+        """AdamW + cosine (default) or ReduceLROnPlateau, selected via training.scheduler."""
         train_cfg     = self.hparams['cfg'].get('training', {})
         lr            = float(train_cfg.get('lr', 1e-3))
         lr_min        = float(train_cfg.get('lr_min', 1e-6))
-        warmup_epochs = int(  train_cfg.get('lr_warmup_epochs', 5))
-        total_epochs  = self.trainer.max_epochs
+        scheduler_type = train_cfg.get('scheduler', 'cosine')
 
         params    = [p for p in self.model.parameters() if p.requires_grad]
         optimizer = torch.optim.AdamW(params, lr=lr, weight_decay=1e-2)
 
-        warmup = torch.optim.lr_scheduler.LinearLR(
-            optimizer,
-            start_factor = 1e-3,
-            end_factor   = 1.0,
-            total_iters  = max(warmup_epochs, 1),
-        )
-        cosine = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer,
-            T_max   = max(total_epochs - warmup_epochs, 1),
-            eta_min = lr_min,
-        )
-        scheduler = torch.optim.lr_scheduler.SequentialLR(
-            optimizer,
-            schedulers = [warmup, cosine],
-            milestones = [warmup_epochs],
-        )
-        return {
-            'optimizer':    optimizer,
-            'lr_scheduler': {
-                'scheduler': scheduler,
-                'interval':  'epoch',
-                'frequency': 1,
-            },
-        }
+        if scheduler_type == 'reduce_on_plateau':
+            factor      = float(train_cfg.get('lr_reduce_factor', 0.75))
+            lr_patience = int(  train_cfg.get('lr_patience',       20))
+            scheduler   = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer,
+                mode     = 'min',
+                factor   = factor,
+                patience = lr_patience,
+                min_lr   = lr_min,
+            )
+            return {
+                'optimizer':    optimizer,
+                'lr_scheduler': {
+                    'scheduler': scheduler,
+                    'monitor':   'val_seld_score',
+                    'interval':  'epoch',
+                    'frequency': 1,
+                },
+            }
+        else:
+            # cosine (default) — linear warmup then cosine annealing
+            warmup_epochs = int(train_cfg.get('lr_warmup_epochs', 5))
+            total_epochs  = self.trainer.max_epochs
+            warmup = torch.optim.lr_scheduler.LinearLR(
+                optimizer,
+                start_factor = 1e-3,
+                end_factor   = 1.0,
+                total_iters  = max(warmup_epochs, 1),
+            )
+            cosine = torch.optim.lr_scheduler.CosineAnnealingLR(
+                optimizer,
+                T_max   = max(total_epochs - warmup_epochs, 1),
+                eta_min = lr_min,
+            )
+            scheduler = torch.optim.lr_scheduler.SequentialLR(
+                optimizer,
+                schedulers = [warmup, cosine],
+                milestones = [warmup_epochs],
+            )
+            return {
+                'optimizer':    optimizer,
+                'lr_scheduler': {
+                    'scheduler': scheduler,
+                    'interval':  'epoch',
+                    'frequency': 1,
+                },
+            }
 
     # ------------------------------------------------------------------
     # Private helpers

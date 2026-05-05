@@ -35,7 +35,7 @@ spatial_early:
   out_channels: 64
   kernel_size: [3, 3]
   pool_size: 1
-  dropout: 0.1
+  dropout: 0.0
 
 spatial_late:
   type: track_transformer
@@ -47,10 +47,31 @@ track_smoothing_spatial:
   type: bigru
   n_layers: 1
   hidden_size: 256
-  dropout: 0.3
+  dropout: 0.0
 
 heads:
   n_tracks: 2
 
 data:
   format: foa
+
+training:
+  epochs:           20
+  batch_size:       16
+  patience:         10
+  
+  lambda_spatial:   0.8
+  lambda_semantic:  0.2
+  beta_sed:         0.6
+  focal_gamma:      0.0
+  angle_thresh:     20.0
+  
+  lr:               5.0e-4
+  lr_reduce_factor: 0.75
+  lr_patience:      20
+  lr_min:           1.0e-5
+  
+  pos_weight_max:   20.0
+  
+  window_s:         10.0
+  hop_s:            2.5

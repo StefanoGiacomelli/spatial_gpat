@@ -7,7 +7,7 @@ Trains ``StandaloneSELDModel`` (dual SED+DOA branches, no GP-AT backbone).
 Supported dataset modes (set via ``training.dataset_mode`` in the YAML):
   * STARSS23       — SELDDataModule, trains on STARSS23
   * TAU-NIGENS2021 — SELDDataModule, trains on TAU-NIGENS2021
-  * MixedSELD      — FinetuneDataModule, trains on STARSS23 + TAU-NIGENS2021
+  * MixedSELD      — MixedSELDDataModule, trains on STARSS23 + TAU-NIGENS2021 + TAU2019
 
 Test is ALWAYS run on BOTH STARSS23 and TAU-NIGENS2021 via a dedicated
 two-loader test DataModule (``StandaloneSELDTestDataModule``), regardless
@@ -90,10 +90,13 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from experiments_standalone_seld.train import StandaloneSELDModule  # noqa: E402
-from datasets.datamodule import SELDDataModule, FinetuneDataModule    # noqa: E402
+from datasets.datamodule import SELDDataModule, MixedSELDDataModule   # noqa: E402
 from datasets.starss23 import STARSS23Dataset                         # noqa: E402
 from datasets.tau_nigens import TAUNIGENSDataset                      # noqa: E402
-from datasets.utils import SELDDataset                                # noqa: E402
+from datasets.tau2019 import TAU2019Dataset                           # noqa: E402
+from datasets.utils import (SELDDataset, MixedSELDDataset,            # noqa: E402
+                             STARSS_TO_UNIFIED, NIGENS_TO_UNIFIED,
+                             TAU2019_TO_UNIFIED)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -112,10 +115,11 @@ _DEFAULT_NUM_WORKERS = 4
 _DEFAULT_WINDOW_S    = 10.0
 _DEFAULT_HOP_S       = 5.0
 
-_DEFAULT_STARSS_ROOT = _ROOT / 'data' / 'STARSS23'
-_DEFAULT_TAU_ROOT    = _ROOT / 'data' / 'TAU-NIGENS2021'
+_DEFAULT_STARSS_ROOT   = _ROOT / 'data' / 'STARSS23'
+_DEFAULT_TAU_ROOT      = _ROOT / 'data' / 'TAU-NIGENS2021'
+_DEFAULT_TAU2019_ROOT  = _ROOT / 'data' / 'TAU2019'
 
-_DEFAULT_CONFIGS_DIR = _ROOT / 'configs' / 'experiments_standalone_seld' / 'foa'
+_DEFAULT_CONFIGS_DIR = _ROOT / 'configs' / 'experiments_standalone_seld' / 'foa' / 'preliminary_conformer'
 
 CONFIGS_DIR = _DEFAULT_CONFIGS_DIR
 CKPT_DIR    = _ROOT / 'runs' / 'standalone_seld' / 'checkpoints'
@@ -129,52 +133,64 @@ STATE_FILE  = _ROOT / 'runs' / 'standalone_seld' / 'experiment_state.json'
 
 class StandaloneSELDTestDataModule(L.LightningDataModule):
     """
-    Provides two test DataLoaders regardless of training dataset:
+    Provides three test DataLoaders for MixedSELD evaluation:
       idx=0 → STARSS23 test split
       idx=1 → TAU-NIGENS2021 test split
+      idx=2 → TAU2019 eval/split0 (mixed_mode=True)
     """
 
     def __init__(
         self,
-        starss_root:  Path,
-        tau_root:     Path,
-        model_sr:     int,
-        hop_length:   int,
-        n_tracks:     int,
-        window_s:     Optional[float],
-        hop_s:        Optional[float],
-        batch_size:   int,
-        num_workers:  int,
-        audio_format: str = 'foa',
+        starss_root:   Path,
+        tau_root:      Path,
+        tau2019_root:  Path,
+        model_sr:      int,
+        hop_length:    int,
+        n_tracks:      int,
+        window_s:      Optional[float],
+        hop_s:         Optional[float],
+        batch_size:    int,
+        num_workers:   int,
     ):
         super().__init__()
-        self.starss_root  = starss_root
-        self.tau_root     = tau_root
-        self.model_sr     = model_sr
-        self.hop_length   = hop_length
-        self.n_tracks     = n_tracks
-        self.window_s     = window_s
-        self.hop_s        = hop_s
-        self.batch_size   = batch_size
-        self.num_workers  = num_workers
-        self.audio_format = audio_format
+        self.starss_root   = starss_root
+        self.tau_root      = tau_root
+        self.tau2019_root  = tau2019_root
+        self.model_sr      = model_sr
+        self.hop_length    = hop_length
+        self.n_tracks      = n_tracks
+        self.window_s      = window_s
+        self.hop_s         = hop_s
+        self.batch_size    = batch_size
+        self.num_workers   = num_workers
 
-        self._starss_ds: Optional[SELDDataset] = None
-        self._tau_ds:    Optional[SELDDataset] = None
+        self._starss_ds:   Optional[SELDDataset] = None
+        self._tau_ds:      Optional[SELDDataset] = None
+        self._tau2019_ds:  Optional[SELDDataset] = None
 
     def setup(self, stage: Optional[str] = None) -> None:
         common = dict(
-            split        = 'test',
-            model_sr     = self.model_sr,
-            hop_length   = self.hop_length,
-            n_tracks     = self.n_tracks,
-            window_s     = self.window_s,
-            hop_s        = self.hop_s,
-            audio_format = self.audio_format,
-            augment      = None,
+            split      = 'test',
+            model_sr   = self.model_sr,
+            hop_length = self.hop_length,
+            n_tracks   = self.n_tracks,
+            window_s   = self.window_s,
+            hop_s      = self.hop_s,
+            augment    = None,
         )
-        self._starss_ds = STARSS23Dataset(root=self.starss_root, **common)
-        self._tau_ds    = TAUNIGENSDataset(root=self.tau_root,   **common)
+        # Wrap each raw dataset in MixedSELDDataset so targets are remapped to
+        # the unified 15-class space — same mapping used during training.
+        # Without this, class indices wouldn't match between model output and targets.
+        starss_raw   = STARSS23Dataset(root=self.starss_root, **common)
+        tau_raw      = TAUNIGENSDataset(root=self.tau_root,   **common)
+        tau2019_raw  = TAU2019Dataset(
+            root       = self.tau2019_root,
+            mixed_mode = True,   # fixed eval/split0 for cross-dataset comparability
+            **common,
+        )
+        self._starss_ds  = MixedSELDDataset([starss_raw],   [STARSS_TO_UNIFIED])
+        self._tau_ds     = MixedSELDDataset([tau_raw],      [NIGENS_TO_UNIFIED])
+        self._tau2019_ds = MixedSELDDataset([tau2019_raw],  [TAU2019_TO_UNIFIED])
 
     def _make_loader(self, ds: SELDDataset) -> DataLoader:
         collate = None if ds.windowed else SELDDataset.collate_fn
@@ -190,7 +206,8 @@ class StandaloneSELDTestDataModule(L.LightningDataModule):
 
     def test_dataloader(self) -> List[DataLoader]:
         return [self._make_loader(self._starss_ds),
-                self._make_loader(self._tau_ds)]
+                self._make_loader(self._tau_ds),
+                self._make_loader(self._tau2019_ds)]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -225,6 +242,9 @@ def _parse_args():
     p.add_argument('--tau-root', type=Path, default=None,
                    metavar='PATH',
                    help=f'TAU-NIGENS2021 dataset root. Default: {_DEFAULT_TAU_ROOT}')
+    p.add_argument('--tau2019-root', type=Path, default=None,
+                   metavar='PATH',
+                   help=f'TAU2019 dataset root. Default: {_DEFAULT_TAU2019_ROOT}')
 
     # ── Warm-start ────────────────────────────────────────────────────────────
     p.add_argument('--pretrained-ckpt', type=Path, default=None,
@@ -233,15 +253,16 @@ def _parse_args():
                         'filter_checkpoint; keys not matching StandaloneSELD are dropped).')
 
     # ── Training hyperparams ──────────────────────────────────────────────────
-    p.add_argument('--epochs',            type=int,   default=_DEFAULT_EPOCHS)
+    p.add_argument('--epochs',            type=int,   default=None,
+                   help='Max training epochs. If omitted, reads from YAML training.epochs.')
     p.add_argument('--batch-size',        type=int,   default=None,
-                   help=f'Batch size. Overrides YAML value. Default: {_DEFAULT_BATCH_SIZE} '
-                        '(used only when YAML has no batch_size key).')
-    p.add_argument('--lr',                type=float, default=_DEFAULT_LR)
-    p.add_argument('--lr-warmup-epochs',  type=int,   default=5,
-                   help='Linear warmup epochs before cosine annealing kicks in.')
-    p.add_argument('--patience',     type=int,   default=_DEFAULT_PATIENCE,
-                   help='EarlyStopping patience in epochs (0 = disabled).')
+                   help='Batch size. If omitted, reads from YAML training.batch_size.')
+    p.add_argument('--lr',                type=float, default=None,
+                   help='Learning rate. If omitted, reads from YAML training.lr.')
+    p.add_argument('--lr-warmup-epochs',  type=int,   default=None,
+                   help='Linear warmup epochs. If omitted, reads from YAML training.lr_warmup_epochs.')
+    p.add_argument('--patience',     type=int,   default=None,
+                   help='EarlyStopping patience (0 = disabled). If omitted, reads from YAML training.patience.')
     p.add_argument('--limit-batches', type=int,  default=0,
                    help='Limit train/val/test batches per epoch (0 = disabled).')
     p.add_argument('--window-s',     type=float, default=None,
@@ -324,7 +345,8 @@ _TRAINING_DEFAULTS = {
 }
 
 
-def _build_cfg(exp_yaml_path: Path, args, starss_root: Path, tau_root: Path) -> dict:
+def _build_cfg(exp_yaml_path: Path, args, starss_root: Path, tau_root: Path,
+               tau2019_root: Path) -> dict:
     """
     Load experiment YAML and inject runtime training + data sections.
 
@@ -344,15 +366,17 @@ def _build_cfg(exp_yaml_path: Path, args, starss_root: Path, tau_root: Path) -> 
     for k, v in _TRAINING_DEFAULTS.items():
         train_cfg.setdefault(k, v)
 
-    # 2. CLI always wins for epochs / lr / lr_warmup_epochs.
-    #    batch_size: CLI explicit → YAML → constant default.
-    train_cfg['epochs']           = args.epochs
-    train_cfg['lr']               = args.lr
-    train_cfg['lr_warmup_epochs'] = args.lr_warmup_epochs
-    if args.batch_size is not None:
-        train_cfg['batch_size'] = args.batch_size
-    else:
-        train_cfg.setdefault('batch_size', _DEFAULT_BATCH_SIZE)
+    # 2. CLI wins only when explicitly provided (not None)
+    if args.epochs           is not None: train_cfg['epochs']           = args.epochs
+    if args.lr               is not None: train_cfg['lr']               = args.lr
+    if args.lr_warmup_epochs is not None: train_cfg['lr_warmup_epochs'] = args.lr_warmup_epochs
+    if args.batch_size       is not None: train_cfg['batch_size']       = args.batch_size
+    if args.patience         is not None: train_cfg['patience']         = args.patience
+    # Ensure mandatory keys have fallback runner defaults
+    train_cfg.setdefault('epochs',        _DEFAULT_EPOCHS)
+    train_cfg.setdefault('batch_size',    _DEFAULT_BATCH_SIZE)
+    train_cfg.setdefault('lr',            _DEFAULT_LR)
+    train_cfg.setdefault('patience',      _DEFAULT_PATIENCE)
 
     dataset_mode = train_cfg.get('dataset_mode', 'STARSS23')
 
@@ -376,12 +400,15 @@ def _build_cfg(exp_yaml_path: Path, args, starss_root: Path, tau_root: Path) -> 
         data_cfg['root_path'] = str(starss_root)
     elif dataset_mode == 'TAU-NIGENS2021':
         data_cfg['root_path'] = str(tau_root)
+    elif dataset_mode == 'TAU2019':
+        data_cfg['root_path'] = str(tau2019_root)
     elif dataset_mode == 'MixedSELD':
-        data_cfg['starss_root'] = str(starss_root)
-        data_cfg['tau_root']    = str(tau_root)
+        data_cfg['starss_root']   = str(starss_root)
+        data_cfg['tau_root']      = str(tau_root)
+        data_cfg['tau2019_root']  = str(tau2019_root)
     else:
         raise ValueError(f'Unknown dataset_mode: {dataset_mode!r}. '
-                         'Expected STARSS23 | TAU-NIGENS2021 | MixedSELD.')
+                         'Expected STARSS23 | TAU-NIGENS2021 | TAU2019 | MixedSELD.')
 
     # 4. semantic.dataset — needed by SELDDataModule
     sem_dataset = 'STARSS23' if dataset_mode in ('STARSS23', 'MixedSELD') else 'TAU-NIGENS2021'
@@ -438,6 +465,7 @@ def _run_experiment(
     was_interrupted: bool,
     starss_root:     Path,
     tau_root:        Path,
+    tau2019_root:    Path,
 ) -> None:
     # 1. Mark running
     state[exp_name] = {'status': 'running', 'started_at': _now_iso()}
@@ -483,28 +511,31 @@ def _run_experiment(
 
     # 4. Training DataModule
     dataset_mode = cfg['training']['dataset_mode']
-    if dataset_mode in ('STARSS23', 'TAU-NIGENS2021'):
+    if dataset_mode in ('STARSS23', 'TAU-NIGENS2021', 'TAU2019'):
         train_dm = SELDDataModule(cfg)
     elif dataset_mode == 'MixedSELD':
-        train_dm = FinetuneDataModule(cfg)
+        train_dm = MixedSELDDataModule(cfg)
     else:
         raise ValueError(f'Unknown dataset_mode: {dataset_mode!r}')
 
-    # 5. Test DataModule (always STARSS23 + TAU-NIGENS)
-    in_cfg  = cfg['input']
+    # 5. Test DataModule — single-dataset: reuse train_dm; MixedSELD: 2-loader
+    in_cfg   = cfg['input']
     data_cfg = cfg.get('data', {})
-    test_dm = StandaloneSELDTestDataModule(
-        starss_root  = starss_root,
-        tau_root     = tau_root,
-        model_sr     = in_cfg['sr'],
-        hop_length   = in_cfg.get('hop_length', 320),
-        n_tracks     = cfg.get('heads', {}).get('n_tracks', 2),
-        window_s     = data_cfg.get('window_s'),
-        hop_s        = data_cfg.get('hop_s'),
-        batch_size   = cfg['training']['batch_size'],
-        num_workers  = data_cfg.get('num_workers', 4),
-        audio_format = data_cfg.get('format', 'foa'),
-    )
+    if dataset_mode == 'MixedSELD':
+        test_dm = StandaloneSELDTestDataModule(
+            starss_root   = starss_root,
+            tau_root      = tau_root,
+            tau2019_root  = tau2019_root,
+            model_sr      = in_cfg['sr'],
+            hop_length    = in_cfg.get('hop_length', 320),
+            n_tracks      = cfg.get('heads', {}).get('n_tracks', 2),
+            window_s      = data_cfg.get('window_s'),
+            hop_s         = data_cfg.get('hop_s'),
+            batch_size   = cfg['training']['batch_size'],
+            num_workers  = data_cfg.get('num_workers', 4),
+        )
+    else:
+        test_dm = train_dm   # single-dataset: test on the same dataset used for training
 
     # 6. Callbacks
     ckpt_monitor = cfg['training'].get('checkpoint_monitor', 'val_seld_score')
@@ -521,11 +552,12 @@ def _run_experiment(
         auto_insert_metric_name = False,
     )
     callbacks = [ckpt_cb]
-    if args.patience > 0:
+    patience = cfg['training'].get('patience', _DEFAULT_PATIENCE)
+    if patience > 0:
         callbacks.append(EarlyStopping(
             monitor  = ckpt_monitor,
             mode     = ckpt_mode,
-            patience = args.patience,
+            patience = patience,
             verbose  = True,
         ))
 
@@ -567,7 +599,7 @@ def _run_experiment(
     )
 
     trainer_kwargs = dict(
-        max_epochs              = args.epochs,
+        max_epochs              = cfg['training']['epochs'],
         callbacks               = callbacks,
         accelerator             = accel,
         devices                 = devices,
@@ -617,8 +649,9 @@ def main() -> None:
 
     args = _parse_args()
 
-    starss_root = (args.starss_root or _DEFAULT_STARSS_ROOT).resolve()
-    tau_root    = (args.tau_root    or _DEFAULT_TAU_ROOT).resolve()
+    starss_root   = (args.starss_root    or _DEFAULT_STARSS_ROOT).resolve()
+    tau_root      = (args.tau_root       or _DEFAULT_TAU_ROOT).resolve()
+    tau2019_root  = (args.tau2019_root   or _DEFAULT_TAU2019_ROOT).resolve()
 
     # ── Resolve config dir and run dir ────────────────────────────────────────
     if args.config_file:
@@ -662,6 +695,7 @@ def main() -> None:
     print(f'Run dir     : {run_dir}')
     print(f'STARSS23    : {starss_root}')
     print(f'TAU-NIGENS  : {tau_root}')
+    print(f'TAU2019     : {tau2019_root}')
     if args.pretrained_ckpt:
         print(f'Pretrained  : {args.pretrained_ckpt}')
 
@@ -678,9 +712,9 @@ def main() -> None:
         was_interrupted = (status == 'running')
 
         if args.config_file:
-            cfg = _build_cfg(args.config_file.resolve(), args, starss_root, tau_root)
+            cfg = _build_cfg(args.config_file.resolve(), args, starss_root, tau_root, tau2019_root)
         else:
-            cfg = _build_cfg(config_dir / f'{exp_name}.yaml', args, starss_root, tau_root)
+            cfg = _build_cfg(config_dir / f'{exp_name}.yaml', args, starss_root, tau_root, tau2019_root)
 
         L.seed_everything(cfg['experiment']['seed'], workers=True)
 
@@ -688,7 +722,8 @@ def main() -> None:
         print(f'[RUN] {exp_name}  (mode={cfg["training"]["dataset_mode"]})')
         print(f'{"=" * 60}')
 
-        _run_experiment(exp_name, cfg, args, state, was_interrupted, starss_root, tau_root)
+        _run_experiment(exp_name, cfg, args, state, was_interrupted, starss_root, tau_root,
+                        tau2019_root)
 
     print('\nAll experiments finished.')
 

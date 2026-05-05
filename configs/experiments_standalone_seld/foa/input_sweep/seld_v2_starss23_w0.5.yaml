@@ -58,12 +58,13 @@ training:
   lr_min:           1.0e-5
 
 augmentation:
-  enabled:     true
-  p_rotate:    0.5
-  p_gain:      0.5
-  p_elevflip:  0.3
-  gain_min_db: -6.0
-  gain_max_db:  6.0
+  enabled:      true
+  p_16patterns: 0.50
+  p_gain:       0.20
+  p_noise:      0.20
+  gain_min:     0.3
+  gain_max:     0.9
+  noise_snr_db: 35.0
 
 data:
   root_path:    data/STARSS23

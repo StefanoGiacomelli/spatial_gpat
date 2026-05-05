@@ -53,3 +53,24 @@ heads:
 
 data:
   format: foa
+
+training:
+  epochs:           100
+  batch_size:       2
+  patience:         20
+  
+  lambda_spatial:   0.9
+  lambda_semantic:  0.1
+  beta_sed:         0.7
+  focal_gamma:      0.0
+  angle_thresh:     20.0
+  
+  lr:               5.0e-4
+  lr_reduce_factor: 0.75
+  lr_patience:      20
+  lr_min:           1.0e-5
+  
+  pos_weight_max:   20.0
+  
+  window_s:         10.0
+  hop_s:            2.5

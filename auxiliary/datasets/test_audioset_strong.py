@@ -51,7 +51,7 @@ from datasets.datamodule import AudioSetStrongDataModule  # noqa: E402
 # ── Constants (mirror main_at2sed.py) ─────────────────────────────────────────
 _CONFIGS_DIR = _ROOT / 'configs' / 'experiments_at2sed'
 _DATASET_CFG = _ROOT / 'configs' / 'datasets' / 'AudioSetStrong.yaml'
-_DEFAULT_EXP = 'at2sed_bce'
+_DEFAULT_EXP = 'at2sed_bce_10s_nohlp'
 
 
 # ══════════════════════════════════════════════════════════════════════════════

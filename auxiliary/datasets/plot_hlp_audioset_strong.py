@@ -30,9 +30,9 @@ Output
 
 Usage
 -----
-    .venv/bin/python tests/plot_hlp_audioset_strong.py
-    .venv/bin/python tests/plot_hlp_audioset_strong.py \\
-        --config-file configs/experiments_at2sed/at2sed_bce_10s.yaml
+    .venv/bin/python auxiliary/datasets/plot_hlp_audioset_strong.py
+    .venv/bin/python auxiliary/datasets/plot_hlp_audioset_strong.py \\
+        --config-file configs/experiments_at2sed/at2sed_bce_10s_hlp.yaml
 """
 
 from __future__ import annotations
@@ -59,7 +59,7 @@ sys.path.insert(0, str(_ROOT))
 from datasets.audioset_strong import AudioSetStrongDataset
 
 _DEFAULT_DATASET_CFG = _ROOT / 'configs' / 'datasets' / 'AudioSetStrong.yaml'
-_DEFAULT_EXP_CFG     = _ROOT / 'configs' / 'experiments_at2sed' / 'at2sed_bce_10s.yaml'
+_DEFAULT_EXP_CFG     = _ROOT / 'configs' / 'experiments_at2sed' / 'at2sed_bce_10s_hlp.yaml'
 
 CLIP_DURATION_S = AudioSetStrongDataset.CLIP_DURATION_S  # 10.0
 

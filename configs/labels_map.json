@@ -33,5 +33,125 @@
       {"name": "ringing phone",                   "audioset_indices": [389, 390, 391]},
       {"name": "piano",                           "audioset_indices": [153]}
     ]
+  },
+  "TAU2019": {
+    "n_classes": 11,
+    "classes": [
+      {"name": "clearthroat", "audioset_indices": [48]},
+      {"name": "cough",       "audioset_indices": [47]},
+      {"name": "doorslam",    "audioset_indices": [354, 358]},
+      {"name": "drawer",      "audioset_indices": [363]},
+      {"name": "keyboard",    "audioset_indices": [386]},
+      {"name": "keysDrop",    "audioset_indices": [379]},
+      {"name": "knock",       "audioset_indices": [359]},
+      {"name": "laughter",    "audioset_indices": [16]},
+      {"name": "pageturn",    "audioset_indices": [487]},
+      {"name": "phone",       "audioset_indices": [389, 390]},
+      {"name": "speech",      "audioset_indices": [0]}
+    ]
+  },
+  "MixedSELD": {
+    "n_classes": 15,
+    "classes": [
+      {"name": "speech",          "audioset_indices": [0, 1, 2, 14, 47, 48]},
+      {"name": "clapping",        "audioset_indices": [63]},
+      {"name": "telephone",       "audioset_indices": [389, 390, 391]},
+      {"name": "laughter",        "audioset_indices": [16]},
+      {"name": "domestic_sounds", "audioset_indices": [363, 377, 379, 386, 412, 456, 487]},
+      {"name": "footsteps",       "audioset_indices": [53]},
+      {"name": "door",            "audioset_indices": [354, 358, 362]},
+      {"name": "music",           "audioset_indices": [92, 137, 138, 143, 153, 175, 180, 216, 267]},
+      {"name": "water_tap",       "audioset_indices": [370]},
+      {"name": "bell",            "audioset_indices": [200, 203, 205]},
+      {"name": "knock",           "audioset_indices": [359]},
+      {"name": "alarm",           "audioset_indices": [388, 395, 396, 399, 400]},
+      {"name": "crying_baby",     "audioset_indices": [23]},
+      {"name": "crash",           "audioset_indices": [443, 469, 470]},
+      {"name": "barking_dog",     "audioset_indices": [75, 78]}
+    ]
+  },
+  "UNIFIED": {
+    "n_classes": 15,
+    "classes": [
+      {
+        "name": "speech",
+        "from": {"STARSS23": [0, 1], "TAU-NIGENS2021": [4, 5, 8, 9], "TAU2019": [0, 1, 10]},
+        "audioset_indices": [0, 1, 2, 14, 47, 48],
+        "notes": "AS0=Speech, AS1=Male speech, AS2=Female speech, AS14=Shout, AS47=Cough, AS48=Throat clearing"
+      },
+      {
+        "name": "clapping",
+        "from": {"STARSS23": [2]},
+        "audioset_indices": [63]
+      },
+      {
+        "name": "telephone",
+        "from": {"STARSS23": [3], "TAU-NIGENS2021": [10], "TAU2019": [9]},
+        "audioset_indices": [389, 390, 391]
+      },
+      {
+        "name": "laughter",
+        "from": {"STARSS23": [4], "TAU2019": [7]},
+        "audioset_indices": [16]
+      },
+      {
+        "name": "domestic_sounds",
+        "from": {"STARSS23": [5], "TAU2019": [3, 4, 5, 8]},
+        "audioset_indices": [363, 377, 379, 386, 412, 456, 487],
+        "notes": "AS363=Drawer, AS377=Domestic sounds, AS379=Keys jangling, AS386=Computer keyboard, AS487=Rustle (pageturn)"
+      },
+      {
+        "name": "footsteps",
+        "from": {"STARSS23": [6], "TAU-NIGENS2021": [6]},
+        "audioset_indices": [53]
+      },
+      {
+        "name": "door",
+        "from": {"STARSS23": [7], "TAU2019": [2]},
+        "audioset_indices": [354, 358, 362],
+        "notes": "AS354=Door, AS358=Slam, AS362=Door open or close"
+      },
+      {
+        "name": "music",
+        "from": {"STARSS23": [8, 9], "TAU-NIGENS2021": [11]},
+        "audioset_indices": [92, 137, 138, 143, 153, 175, 180, 216, 267],
+        "notes": "Merge of Music + Musical instrument + Piano (AS153)"
+      },
+      {
+        "name": "water_tap",
+        "from": {"STARSS23": [10]},
+        "audioset_indices": [370]
+      },
+      {
+        "name": "bell",
+        "from": {"STARSS23": [11]},
+        "audioset_indices": [200, 203, 205]
+      },
+      {
+        "name": "knock",
+        "from": {"STARSS23": [12], "TAU-NIGENS2021": [7], "TAU2019": [6]},
+        "audioset_indices": [359]
+      },
+      {
+        "name": "alarm",
+        "from": {"TAU-NIGENS2021": [0]},
+        "audioset_indices": [388, 395, 396, 399, 400]
+      },
+      {
+        "name": "crying_baby",
+        "from": {"TAU-NIGENS2021": [1]},
+        "audioset_indices": [23]
+      },
+      {
+        "name": "crash",
+        "from": {"TAU-NIGENS2021": [2]},
+        "audioset_indices": [443, 469, 470]
+      },
+      {
+        "name": "barking_dog",
+        "from": {"TAU-NIGENS2021": [3]},
+        "audioset_indices": [75, 78]
+      }
+    ]
   }
 }

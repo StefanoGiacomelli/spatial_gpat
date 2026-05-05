@@ -1,0 +1,23 @@
+# Dataset-specific training config — TAU2019
+# Loaded automatically by main_nas-seld.py when --dataset TAU2019 is used.
+# Merged into cfg['augmentation'] and cfg['training'].
+# CLI --batch-size always overrides training.batch_size.
+
+data:
+  root:        data/TAU2019   # contains dev/ and eval/
+  fold:        1              # 1|2|3|4 — used only in standalone (SELDDataModule) mode
+  num_workers: 4
+
+augmentation:
+  enabled: false
+  p_16patterns: 0.50   # 16 FOA symmetry patterns — Mazzon et al.
+  p_gain:       0.20   # Global amplitude scaling, g ~ U(gain_min, gain_max)
+  p_noise:      0.20   # White noise injection, SNR = noise_snr_db
+  # p_none = 0.10 — computed as 1 - sum(p_*); no augmentation applied
+  gain_min:     0.3
+  gain_max:     0.9
+  noise_snr_db: 35.0
+
+training:
+  # Retained for BCEWithLogitsLoss; not used for oversampling balancing.
+  pos_weight_max: 20.0

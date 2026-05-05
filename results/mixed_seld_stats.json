@@ -1,0 +1,108 @@
+{
+  "window_s": 10.0,
+  "hop_s": 5.0,
+  "splits": {
+    "STARSS23_train": {
+      "n_clips": 72,
+      "n_windows": 2365
+    },
+    "NIGENS_train": {
+      "n_clips": 400,
+      "n_windows": 4800
+    },
+    "TAU2019_train": {
+      "n_clips": 300,
+      "n_windows": 3688
+    },
+    "mixed_train_total": {
+      "n_clips": 772,
+      "n_windows": 10853
+    },
+    "STARSS23_val": {
+      "n_clips": 18,
+      "n_windows": 656
+    },
+    "TAU2019_val": {
+      "n_clips": 100,
+      "n_windows": 1232
+    },
+    "STARSS23_test": {
+      "n_clips": 78,
+      "n_windows": 2357
+    },
+    "TAU2019_test": {
+      "n_clips": 100,
+      "n_windows": 1219
+    }
+  },
+  "unified_class_counts": {
+    "STARSS23_train": {
+      "speech": 68607,
+      "clapping": 439,
+      "telephone": 1147,
+      "laughter": 3589,
+      "domestic": 17666,
+      "footsteps": 2705,
+      "door": 958,
+      "music": 30396,
+      "water_tap": 711,
+      "bell": 1474,
+      "knock": 75,
+      "alarm": 1,
+      "crying_baby": 1,
+      "crash": 1,
+      "barking_dog": 1
+    },
+    "NIGENS_train": {
+      "speech": 39836,
+      "clapping": 1,
+      "telephone": 22218,
+      "laughter": 1,
+      "domestic": 1,
+      "footsteps": 66527,
+      "door": 1,
+      "music": 49758,
+      "water_tap": 1,
+      "bell": 1,
+      "knock": 6740,
+      "alarm": 58193,
+      "crying_baby": 32794,
+      "crash": 29801,
+      "barking_dog": 21478
+    },
+    "TAU2019_train": {
+      "speech": 44478,
+      "clapping": 1,
+      "telephone": 19800,
+      "laughter": 18279,
+      "domestic": 51731,
+      "footsteps": 1,
+      "door": 6004,
+      "music": 1,
+      "water_tap": 1,
+      "bell": 1,
+      "knock": 10254,
+      "alarm": 1,
+      "crying_baby": 1,
+      "crash": 1,
+      "barking_dog": 1
+    },
+    "combined_train": {
+      "speech": 152921,
+      "clapping": 441,
+      "telephone": 43165,
+      "laughter": 21869,
+      "domestic": 69398,
+      "footsteps": 69233,
+      "door": 6963,
+      "music": 80155,
+      "water_tap": 713,
+      "bell": 1476,
+      "knock": 17069,
+      "alarm": 58195,
+      "crying_baby": 32796,
+      "crash": 29803,
+      "barking_dog": 21480
+    }
+  }
+}

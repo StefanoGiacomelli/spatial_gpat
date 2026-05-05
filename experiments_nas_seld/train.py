@@ -72,13 +72,15 @@ from .loss import (
 _N_CLASSES: Dict[str, int] = {
     'STARSS23':       13,
     'TAU-NIGENS2021': 12,
+    'MixedSELD':      15,
 }
 
-# Dataset → native (original) sample rate; both current datasets are 24 kHz.
+# Dataset → native (original) sample rate; all datasets are 24 kHz after resampling.
 # NASModel.forward resamples to cfg['input']['sr'] only when orig_sr is passed.
 _ORIG_SR: Dict[str, int] = {
     'STARSS23':       24000,
     'TAU-NIGENS2021': 24000,
+    'MixedSELD':      24000,
 }
 
 
@@ -173,6 +175,12 @@ class NASLightningModule(L.LightningModule):
         self.sem_loss  = SemanticPresenceLoss(pos_weight=pos_weight)
         self.metrics     = SELDMetrics(angle_thresh=angle_thresh)
         self.sem_metrics = SemanticClassificationMetrics(n_classes)
+
+        # Extra accumulators for MixedSELD test (3 DataLoaders)
+        self.metrics_starss  = SELDMetrics(angle_thresh=angle_thresh)
+        self.metrics_tau     = SELDMetrics(angle_thresh=angle_thresh)
+        self.metrics_tau2019 = SELDMetrics(angle_thresh=angle_thresh)
+        self._mixed_test = (dataset_name == 'MixedSELD')
 
         self._perclass_metrics = bool(train_cfg.get('perclass_metrics', False))
 
@@ -329,26 +337,53 @@ class NASLightningModule(L.LightningModule):
         self,
         batch: Tuple[torch.Tensor, torch.Tensor],
         batch_idx: int,
+        dataloader_idx: int = 0,
     ) -> None:
-        """Accumulate SELD and semantic metrics on the test split.
+        """Accumulate SELD (and semantic) metrics on the test split.
 
-        Parameters
-        ----------
-        batch : tuple of (x, tgt_spatial)
-        batch_idx : int
+        When training on MixedSELD, three DataLoaders are used (idx 0/1/2),
+        each accumulating into a separate SELDMetrics instance.
         """
         x, tgt_spatial = batch
         act_logits, doa_tanh, out_e = self.model(x, orig_sr=self.orig_sr)
-        # T_mel alignment (see training_step)
         T = min(act_logits.shape[1], tgt_spatial.shape[1])
         act_logits  = act_logits[:, :T]
         doa_tanh    = doa_tanh[:, :T]
         tgt_spatial = tgt_spatial[:, :T]
-        self.metrics.update(act_logits, doa_tanh, tgt_spatial)
-        self.sem_metrics.update(out_e, tgt_spatial)
+
+        if self._mixed_test:
+            if dataloader_idx == 0:
+                self.metrics_starss.update(act_logits, doa_tanh, tgt_spatial)
+            elif dataloader_idx == 1:
+                self.metrics_tau.update(act_logits, doa_tanh, tgt_spatial)
+            else:
+                self.metrics_tau2019.update(act_logits, doa_tanh, tgt_spatial)
+        else:
+            self.metrics.update(act_logits, doa_tanh, tgt_spatial)
+            self.sem_metrics.update(out_e, tgt_spatial)
 
     def on_test_epoch_end(self) -> None:
         """Flush all test metrics; log scalars to TensorBoard, full results to JSON."""
+        if self._mixed_test:
+            # MixedSELD: 3 separate metric sets, no semantic metrics
+            starss = self.metrics_starss.compute();  self.metrics_starss.reset()
+            tau    = self.metrics_tau.compute();     self.metrics_tau.reset()
+            tau2019 = self.metrics_tau2019.compute(); self.metrics_tau2019.reset()
+            for key, val in starss.items():
+                self.log(f'test_starss/{key}', float(val), on_epoch=True, sync_dist=True)
+            for key, val in tau.items():
+                self.log(f'test_tau/{key}', float(val), on_epoch=True, sync_dist=True)
+            for key, val in tau2019.items():
+                self.log(f'test_tau2019/{key}', float(val), on_epoch=True, sync_dist=True)
+            if self._metrics_path is not None:
+                test_dict: dict = {'epoch': 'test'}
+                test_dict.update({f'test_starss/{k}': v for k, v in starss.items()})
+                test_dict.update({f'test_tau/{k}': v for k, v in tau.items()})
+                test_dict.update({f'test_tau2019/{k}': v for k, v in tau2019.items()})
+                self._epoch_metrics_log.append(test_dict)
+                self._flush_metrics_log()
+            return
+
         seld = self.metrics.compute()
         self.metrics.reset()
         sem  = self.sem_metrics.compute(include_confusion_matrix=True)
@@ -363,10 +398,10 @@ class NASLightningModule(L.LightningModule):
             self.log(f'test/{key}', float(val), on_epoch=True, sync_dist=True)
 
         if self._metrics_path is not None:
-            test_dict: dict = {'epoch': 'test'}
-            test_dict.update({f'test/{k}': v for k, v in seld.items()})
-            test_dict.update({f'test/{k}': v for k, v in sem.items()})
-            self._epoch_metrics_log.append(test_dict)
+            test_dict2: dict = {'epoch': 'test'}
+            test_dict2.update({f'test/{k}': v for k, v in seld.items()})
+            test_dict2.update({f'test/{k}': v for k, v in sem.items()})
+            self._epoch_metrics_log.append(test_dict2)
             self._flush_metrics_log()
 
             if self._perclass_metrics:
