@@ -1,0 +1,94 @@
+# Phase 4 fine-tuning — TAU-NIGENS2021 standalone, focal loss
+# Architecture: exp_r3_t1_cs01 (Phase 3 winner) — same as exp_ft_mixed_focal
+# Dataset:      TAU-NIGENS2021  (12 classes)
+# Loss:         focal (focal_gamma=2.0)
+# Runner:       main_nas-seld.py --dataset TAU-NIGENS2021
+
+experiment:
+  name: exp_ft_tau_nigens_focal
+  seed: 42
+
+input:
+  type: spectral
+  sr: 32000
+  n_mics: 4
+  hop_length: 320
+  n_fft: 512
+
+semantic:
+  dataset:    TAU-NIGENS2021
+  checkpoint: semantic_backbone/epanns/checkpoint_closeto_.44.pt
+  early_group: {init: pretrained, frozen: false}
+  late_group:  {init: pretrained, frozen: false}
+  head_group:  {init: pretrained, frozen: false}
+
+cross_stitch:
+  cs_early_enabled: false
+  cs_late_enabled:  true
+  C_bridge_early: 64
+  C_bridge_late: 128
+
+spatial_early:
+  type: resnet_block
+  n_layers: 3
+  out_channels: 64
+  use_msca: true
+  msca_reduction: 4
+  stride: [1, 1]
+  dropout: 0.1
+
+spatial_late:
+  type: track_transformer
+  n_layers: 1
+  d_model: 128
+  n_heads: 4
+  n_tracks: 3
+  dropout: 0.1
+
+track_smoothing_spatial:
+  type: bigru
+  n_layers: 1
+  hidden_size: 256
+  dropout: 0.1
+
+heads:
+  n_tracks:  3
+  n_classes: 12
+
+data:
+  format:       foa
+  window_s:     10.0
+  hop_s:        2.5
+  val_fraction: 0.2
+  val_seed:     42
+  num_workers:  4
+
+augmentation:
+  enabled:      true
+  p_16patterns: 0.50
+  p_gain:       0.20
+  p_noise:      0.20
+  gain_min:     0.3
+  gain_max:     0.9
+  noise_snr_db: 35.0
+
+training:
+  epochs:           50
+  batch_size:       4
+  patience:         16
+
+  lambda_spatial:   0.9
+  lambda_semantic:  0.1
+  beta_sed:         0.85
+  focal_gamma:      2.0
+  angle_thresh:     20.0
+
+  pos_weight_max:   20.0
+
+  lr:               5.0e-4
+  lr_reduce_factor: 0.75
+  lr_patience:      2
+  lr_min:           1.0e-5
+
+  window_s:         10.0
+  hop_s:            2.5

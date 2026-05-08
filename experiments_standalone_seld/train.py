@@ -64,10 +64,10 @@ from experiments_nas_seld.loss import tPITLoss, SELDMetrics
 
 
 _ORIG_SR = {
-    'STARSS23':       24000,
-    'TAU-NIGENS2021': 24000,
-    'TAU2019':        24000,
-    'MixedSELD':      24000,
+    'STARSS23':          24000,
+    'TAU-NIGENS2021':    24000,
+    'TAU2019':           24000,   # TAU2019Dataset resamples to model_sr internally
+    'BalancedSTARSS23':  24000,
 }
 
 
@@ -125,7 +125,7 @@ class StandaloneSELDModule(L.LightningModule):
                         pos_weight = _cpw_tau2019(Path(root), n_classes=n_classes)
                     except (ImportError, AttributeError):
                         pass  # compute_pos_weights not available for TAU2019 — skip
-            elif dataset_mode == 'MixedSELD':
+            elif dataset_mode == 'BalancedSTARSS23':
                 root = cfg.get('data', {}).get('starss_root')
                 if root:
                     from datasets.starss23 import compute_pos_weights
@@ -238,15 +238,15 @@ class StandaloneSELDModule(L.LightningModule):
             self._flush_metrics_log()
 
     # ------------------------------------------------------------------
-    # Test — two dataloaders (STARSS23 idx=0, TAU-NIGENS idx=1)
+    # Test — 1 or 3 dataloaders (single dataset or BalancedSTARSS23)
     # ------------------------------------------------------------------
 
-    # Maps dataset_mode → (log_prefix, accumulator_attr)
+    # Maps dataset_mode → log_prefix (None = multi-loader, prefix from dataloader_idx)
     _TEST_PREFIX = {
-        'STARSS23':       'test_starss',
-        'TAU-NIGENS2021': 'test_tau',
-        'TAU2019':        'test_tau2019',
-        'MixedSELD':      None,   # multi-loader: prefix determined by dataloader_idx
+        'STARSS23':          'test_starss',
+        'TAU-NIGENS2021':    'test_tau',
+        'TAU2019':           'test_tau2019',
+        'BalancedSTARSS23':  None,   # 3 DataLoaders: idx=0/1/2 → starss/tau/tau2019
     }
 
     def test_step(
@@ -270,7 +270,7 @@ class StandaloneSELDModule(L.LightningModule):
         doa_tanh   = doa_tanh[:, :T]
         tgt        = tgt[:, :T]
 
-        if dataset_mode == 'MixedSELD':
+        if dataset_mode == 'BalancedSTARSS23':
             # Three DataLoaders: idx=0 → STARSS23, idx=1 → TAU-NIGENS, idx=2 → TAU2019
             if dataloader_idx == 0:
                 self.metrics_starss.update(act_logits, doa_tanh, tgt)
@@ -286,7 +286,7 @@ class StandaloneSELDModule(L.LightningModule):
         dataset_mode = self.hparams['cfg']['training'].get('dataset_mode', 'STARSS23')
         prefix = self._TEST_PREFIX.get(dataset_mode, 'test_starss')
 
-        if dataset_mode == 'MixedSELD':
+        if dataset_mode == 'BalancedSTARSS23':
             starss   = self.metrics_starss.compute();   self.metrics_starss.reset()
             tau      = self.metrics_tau.compute();      self.metrics_tau.reset()
             tau2019  = self.metrics_tau2019.compute();  self.metrics_tau2019.reset()

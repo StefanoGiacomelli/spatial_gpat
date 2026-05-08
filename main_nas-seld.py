@@ -64,7 +64,7 @@ Stefano Giacomelli, Ph.D. candidate
 DISIM Department — University of L'Aquila
 """
 
-from dotenv import load_dotenv
+#from dotenv import load_dotenv
 
 import atexit
 import json
@@ -75,7 +75,6 @@ import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
-from dotenv import load_dotenv
 
 # Suppress known benign warnings that pollute training output
 warnings.filterwarnings('ignore', message='.*LeafSpec.*deprecated.*')
@@ -94,8 +93,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from experiments_nas_seld.train import NASLightningModule  # noqa: E402
-from datasets.datamodule import (SELDDataModule, MixedSELDDataModule,  # noqa: E402
-                                  MixedSELDTestDataModule)
+from datasets.datamodule import SELDDataModule             # noqa: E402
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Constants
@@ -121,7 +119,7 @@ _DEFAULT_HOP_S       =  2.5    # unused in full-clip mode
 DATASET_ROOTS = {
     'STARSS23':       _ROOT / 'data' / 'STARSS23',
     'TAU-NIGENS2021': _ROOT / 'data' / 'TAU-NIGENS2021',
-    'MixedSELD':      _ROOT / 'data' / 'STARSS23',   # placeholder — roots injected separately
+    'TAU2019':        _ROOT / 'data' / 'TAU2019',
 }
 
 MIXED_ROOTS = {
@@ -155,14 +153,14 @@ def _parse_args():
 
     # ── Dataset ───────────────────────────────────────────────────────────────
     p.add_argument('--dataset', type=str, default='STARSS23',
-                   choices=['STARSS23', 'TAU-NIGENS2021', 'MixedSELD'],
+                   choices=['STARSS23', 'TAU-NIGENS2021', 'TAU2019', 'BalancedSTARSS23'],
                    help='Dataset for training/validation/test.')
     p.add_argument('--starss-root',   type=Path, default=None, metavar='PATH',
-                   help='STARSS23 root (MixedSELD mode only).')
+                   help='STARSS23 root (BalancedSTARSS23 mode only).')
     p.add_argument('--tau-root',      type=Path, default=None, metavar='PATH',
-                   help='TAU-NIGENS2021 root (MixedSELD mode only).')
+                   help='TAU-NIGENS2021 root (BalancedSTARSS23 mode only).')
     p.add_argument('--tau2019-root',  type=Path, default=None, metavar='PATH',
-                   help='TAU2019 root (MixedSELD mode only).')
+                   help='TAU2019 root (BalancedSTARSS23 mode only).')
 
     # ── Config / output paths ─────────────────────────────────────────────────
     loc = p.add_mutually_exclusive_group()
@@ -332,7 +330,7 @@ def _build_cfg(exp_yaml_path: Path, args) -> dict:
         'val_seed':     SEED,
         'num_workers':  args.num_workers,
     }
-    if dataset_name == 'MixedSELD':
+    if dataset_name == 'BalancedSTARSS23':
         data_update['starss_root']  = str((args.starss_root  or MIXED_ROOTS['starss_root']).resolve())
         data_update['tau_root']     = str((args.tau_root     or MIXED_ROOTS['tau_root']).resolve())
         data_update['tau2019_root'] = str((args.tau2019_root or MIXED_ROOTS['tau2019_root']).resolve())
@@ -437,8 +435,12 @@ def _run_experiment(
     METRICS_DIR.mkdir(parents=True, exist_ok=True)
 
     dataset_name = cfg.get('semantic', {}).get('dataset', 'STARSS23')
-    if dataset_name == 'MixedSELD':
-        dm = MixedSELDDataModule(cfg)
+    if dataset_name == 'BalancedSTARSS23':
+        from datasets.datamodule import BalancedSELDDataModule  # noqa: E402
+        dm = BalancedSELDDataModule(cfg)
+    elif dataset_name == 'TAU2019':
+        from datasets.datamodule import FoldCyclingDataModule   # noqa: E402
+        dm = FoldCyclingDataModule(cfg)
     else:
         dm = SELDDataModule(cfg)
     model = NASLightningModule(cfg)
@@ -522,6 +524,9 @@ def _run_experiment(
         logger                  = [tb_logger, wb_logger],
         num_sanity_val_steps    = 0,
     )
+    if dataset_name == 'TAU2019':
+        # FoldCyclingDataModule needs a fresh dataloader every epoch
+        trainer_kwargs['reload_dataloaders_every_n_epochs'] = 1
     if args.limit_batches > 0:
         trainer_kwargs.update(
             limit_train_batches = args.limit_batches,
@@ -535,10 +540,12 @@ def _run_experiment(
     trainer.fit(model, dm, ckpt_path=resume_ckpt)
 
     # 9. Test with best checkpoint ─────────────────────────────────────────────
-    if dataset_name == 'MixedSELD':
-        test_dm = MixedSELDTestDataModule(cfg)
+    if dataset_name == 'BalancedSTARSS23':
+        from datasets.datamodule import BalancedSELDDataModule  # noqa: E402
+        test_dm = BalancedSELDDataModule(cfg)
         trainer.test(model, test_dm, ckpt_path='best')
     else:
+        # TAU2019: dm.setup('test') creates mixed_mode eval split; others reuse dm
         trainer.test(model, dm, ckpt_path='best')
 
     # 10. Remove last.ckpt (kept only as mid-run resume target) ───────────────
@@ -639,5 +646,5 @@ def main() -> None:
 
 
 if __name__ == '__main__':
-    load_dotenv()
+    #load_dotenv()
     main()

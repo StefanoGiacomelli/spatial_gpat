@@ -1,0 +1,91 @@
+experiment:
+  name: resnet_starss23_cse
+  seed: 42
+
+input:
+  type:        spectral
+  sr:          24000
+  n_mics:      4
+  n_fft:       1024
+  hop_length:  240            # 10 ms frame shift
+  compute_iv:  true
+
+# ── Early stage: ResNetBlock×2 (stride=1,1) + learned freq projection ─────────
+spatial_early:
+  type:           resnet_block
+  n_layers:       2             # channel schedule: [128, 64]
+  out_channels:   64            # final ResNet width
+  d_model:        128           # projection output — same as Conformer d_model
+  use_msca:       true
+  msca_reduction: 4
+  dropout:        0.1
+
+# ── Late stage: per-track Transformer (identical to Conformer-based) ───────────
+spatial_late:
+  type:     track_transformer
+  n_layers: 2
+  d_model:  128                 # must match spatial_early.d_model
+  n_heads:  4
+  n_tracks: 3
+  dropout:  0.1
+
+# ── Temporal smoother: BiGRU (adds global temporal context absent in ResNet) ───
+track_smoothing:
+  type:        bigru
+  hidden_size: 256              # output dim = hidden_size (BiGRU is bidirectional)
+  n_layers:    1
+  dropout:     0.1
+
+# ── Output heads ──────────────────────────────────────────────────────────────
+heads:
+  n_tracks:  3
+  n_classes: 13
+  proj_dim:  null
+
+# ── Cross-stitching between SED and DOA branches ──────────────────────────────
+cross_stitch:
+  cs_early_enabled: true
+  cs_late_enabled:  false
+
+# ── Training ──────────────────────────────────────────────────────────────────
+training:
+  dataset_mode:     STARSS23
+  epochs:           50
+  batch_size:       2
+  patience:         30
+  
+  beta_sed:         0.6
+  focal_gamma:      0.0
+  pos_weight_max:   20.0
+  angle_thresh:     20.0
+  
+  lr:               3.0e-4
+  scheduler:        reduce_on_plateau
+  lr_reduce_factor: 0.75
+  lr_patience:      5
+  lr_min:           1.0e-5
+
+# ── Data augmentation ─────────────────────────────────────────────────────────
+augmentation:
+  enabled:      true
+  p_16patterns: 0.50
+  p_gain:       0.20
+  p_noise:      0.20
+  gain_min:     0.3
+  gain_max:     0.9
+  noise_snr_db: 35.0
+  spec_augment:
+    enabled:         false
+    n_freq_masks:    2
+    freq_mask_param: 20
+    n_time_masks:    2
+    time_mask_param: 30
+
+# ── Data ──────────────────────────────────────────────────────────────────────
+data:
+  root_path:    data/STARSS23
+  window_s:     10.0
+  hop_s:        2.5
+  val_fraction: 0.2
+  val_seed:     42
+  num_workers:  4

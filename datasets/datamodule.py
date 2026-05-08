@@ -4,13 +4,10 @@ DataModules — all PyTorch Lightning DataModules for spatial_gpat
 
 Catalog
 -------
-SELDDataModule        : Single-dataset SELD (STARSS23, TAU-NIGENS2021, or TAU2019).
-MixedSELDDataModule   : Mixed STARSS23 + TAU-NIGENS2021 + TAU2019, unified 15-class schema.
+SELDDataModule           : Single-dataset SELD (STARSS23, TAU-NIGENS2021, or TAU2019).
+BalancedSELDDataModule   : Balanced 3-dataset training anchored on STARSS23 13-class space.
 AudioSetStrongDataModule : AudioSet-Strong SED fine-tuning (GP-AT / E-PANNs backbone).
-STARSS23SEDDataModule : STARSS23 repackaged as SED-style batches for AT2SED training.
-
-Note: ``semantic.dataset`` is injected automatically by all entry-point scripts
-(main_seld_only.py, main_finetune.py, …) and should not be set manually in YAMLs.
+STARSS23SEDDataModule    : STARSS23 repackaged as SED-style batches for AT2SED training.
 
 Author
 ------
@@ -28,12 +25,12 @@ import torch
 import lightning as L
 from torch.utils.data import DataLoader, WeightedRandomSampler
 
-from .utils      import (SELDAugment, SELDDataset, MixedSELDDataset,
-                         STARSS_TO_UNIFIED, NIGENS_TO_UNIFIED, TAU2019_TO_UNIFIED)
+from .utils      import SELDAugment, SELDDataset
 from .starss23   import STARSS23Dataset
 from .tau_nigens import TAUNIGENSDataset
 from .tau2019    import TAU2019Dataset
 from .audioset_strong import AudioSetAugment, AudioSetStrongDataset
+from .balanced   import BalancedSELDDataModule  # re-export so callers can import from datamodule
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -167,229 +164,84 @@ class SELDDataModule(L.LightningDataModule):
         return self._test_ds
 
 
+
 # ══════════════════════════════════════════════════════════════════════════════
-# MixedSELDDataModule
+# FoldCyclingDataModule
 # ══════════════════════════════════════════════════════════════════════════════
 
-class MixedSELDDataModule(L.LightningDataModule):
+class FoldCyclingDataModule(SELDDataModule):
     """
-    LightningDataModule for joint training on STARSS23, TAU-NIGENS2021, TAU2019.
+    LightningDataModule for TAU2019 with 4-fold epoch cycling.
 
-    Produces ``MixedSELDDataset`` items with a unified 15-class schema.
+    train_dataloader() and val_dataloader() create a fresh TAU2019Dataset for
+    fold = (trainer.current_epoch % 4) + 1 at the start of each epoch.
+    The test split always uses mixed_mode=True (eval/split0).
 
-    Dataset splits:
-        STARSS23       — room-stratified train/val, dev-test as test
-        TAU-NIGENS2021 — fold-based train/val/test (official DCASE2021 split)
-        TAU2019        — mixed_mode=True: train=splits2-4, val=split1, test=eval/split0
+    Fold schedule
+    -------------
+    epoch 0 → fold 1 : train=[split3,4], val=[split2]
+    epoch 1 → fold 2 : train=[split4,1], val=[split3]
+    epoch 2 → fold 3 : train=[split1,2], val=[split4]
+    epoch 3 → fold 4 : train=[split2,3], val=[split1]
+    epoch 4 → fold 1 (cycle repeats)
 
-    Configuration keys (under ``data.``)::
-
-        starss_root   : path/to/STARSS23
-        tau_root      : path/to/TAU-NIGENS2021
-        tau2019_root  : path/to/TAU2019
-        window_s      : seconds (null = full-clip mode)
-        hop_s         : overlap hop (windowed mode only)
-        val_fraction  : STARSS23 train/val split fraction (default 0.2)
-        val_seed      : RNG seed for STARSS23 split (default 42)
-        num_workers   : DataLoader workers (default 4)
+    Requires ``Trainer(reload_dataloaders_every_n_epochs=1)`` in the runner.
+    Use a large EarlyStopping patience (≥ 20 epochs) because the validation
+    split changes every 4 epochs.
     """
 
     def __init__(self, cfg: dict) -> None:
-        super().__init__()
+        super().__init__(cfg)
+        if self.dataset_name != 'TAU2019':
+            raise ValueError(
+                f"FoldCyclingDataModule expects dataset='TAU2019', "
+                f"got {self.dataset_name!r}."
+            )
 
-        data_cfg  = cfg.get('data', {})
-        in_cfg    = cfg['input']
-        head_cfg  = cfg.get('heads', {})
-        train_cfg = cfg.get('training', {})
+    # ── Helpers ───────────────────────────────────────────────────────────────
 
-        self.starss_root  = Path(data_cfg['starss_root'])
-        self.tau_root     = Path(data_cfg['tau_root'])
-        self.tau2019_root = Path(data_cfg['tau2019_root'])
+    def _current_fold(self) -> int:
+        trainer = getattr(self, 'trainer', None)
+        epoch   = int(getattr(trainer, 'current_epoch', 0) or 0)
+        return (epoch % 4) + 1
 
-        self.model_sr   = in_cfg['sr']
-        self.hop_length = in_cfg.get('hop_length', 320)
-        self.n_tracks   = head_cfg.get('n_tracks', 3)
-
-        self.window_s     = data_cfg.get('window_s', None)
-        self.hop_s        = data_cfg.get('hop_s', None)
-        self.val_fraction = data_cfg.get('val_fraction', 0.2)
-        self.val_seed     = data_cfg.get('val_seed', 42)
-
-        self.batch_size  = train_cfg.get('batch_size', 1)
-        self.num_workers = data_cfg.get('num_workers', 4)
-
-        aug_cfg = cfg.get('augmentation', {})
-        if aug_cfg.get('enabled', False):
-            self.augment_train: Optional[SELDAugment] = SELDAugment(**aug_cfg)
-        else:
-            self.augment_train = None
-
-        self._train_ds: Optional[MixedSELDDataset] = None
-        self._val_ds:   Optional[MixedSELDDataset] = None
-        self._test_ds:  Optional[MixedSELDDataset] = None
-
-    # ── Dataset construction ─────────────────────────────────────────────────
-
-    def _make_mixed(self, split: str, augment=None) -> MixedSELDDataset:
-        common = dict(
+    def _make_tau2019(self, split: str, fold: int) -> TAU2019Dataset:
+        return TAU2019Dataset(
+            root       = self.root,
             split      = split,
+            fold       = fold,
+            mixed_mode = (split == 'test'),
             model_sr   = self.model_sr,
             hop_length = self.hop_length,
             n_tracks   = self.n_tracks,
             window_s   = self.window_s,
             hop_s      = self.hop_s,
-        )
-        starss_ds = STARSS23Dataset(
-            root         = self.starss_root,
-            val_fraction = self.val_fraction,
-            val_seed     = self.val_seed,
-            augment      = augment,
-            **common,
-        )
-        tau_ds = TAUNIGENSDataset(
-            root    = self.tau_root,
-            augment = augment,
-            **common,
-        )
-        tau2019_ds = TAU2019Dataset(
-            root       = self.tau2019_root,
-            mixed_mode = True,
-            augment    = augment,
-            **common,
-        )
-        return MixedSELDDataset(
-            datasets = [starss_ds, tau_ds, tau2019_ds],
-            mappings = [STARSS_TO_UNIFIED, NIGENS_TO_UNIFIED, TAU2019_TO_UNIFIED],
+            augment    = self.augment_train if split == 'train' else None,
         )
 
-    # ── Lightning hooks ──────────────────────────────────────────────────────
+    # ── Lightning hooks ───────────────────────────────────────────────────────
 
     def setup(self, stage: Optional[str] = None) -> None:
-        if stage in ('fit', None):
-            self._train_ds = self._make_mixed('train', augment=self.augment_train)
-            self._val_ds   = self._make_mixed('val',   augment=None)
+        # Train/val datasets are built fresh each epoch in train/val_dataloader.
+        # Only the test split needs eager setup (fold-independent).
         if stage in ('test', None):
-            self._test_ds  = self._make_mixed('test',  augment=None)
-
-    def _make_loader(
-        self, ds: MixedSELDDataset, shuffle: bool, drop_last: bool = False
-    ) -> DataLoader:
-        collate = None if ds.windowed else SELDDataset.collate_fn
-        return DataLoader(
-            ds,
-            batch_size         = self.batch_size,
-            shuffle            = shuffle,
-            drop_last          = drop_last,
-            num_workers        = self.num_workers,
-            collate_fn         = collate,
-            pin_memory         = False,
-            persistent_workers = self.num_workers > 0,
-        )
+            self._test_ds = self._make_tau2019('test', fold=1)
 
     def train_dataloader(self) -> DataLoader:
-        return self._make_loader(self._train_ds, shuffle=True, drop_last=True)
+        fold  = self._current_fold()
+        epoch = int(getattr(getattr(self, 'trainer', None), 'current_epoch', 0) or 0)
+        ds    = self._make_tau2019('train', fold=fold)
+        print(f'[FoldCyclingDataModule] epoch={epoch}  fold={fold}  '
+              f'train items={len(ds)}')
+        return self._make_loader(ds, shuffle=True, drop_last=True)
 
     def val_dataloader(self) -> DataLoader:
-        return self._make_loader(self._val_ds, shuffle=False)
+        fold = self._current_fold()
+        ds   = self._make_tau2019('val', fold=fold)
+        return self._make_loader(ds, shuffle=False)
 
     def test_dataloader(self) -> DataLoader:
         return self._make_loader(self._test_ds, shuffle=False)
-
-    # ── Convenience properties ────────────────────────────────────────────────
-
-    @property
-    def train_dataset(self) -> Optional[MixedSELDDataset]:
-        return self._train_ds
-
-    @property
-    def val_dataset(self) -> Optional[MixedSELDDataset]:
-        return self._val_ds
-
-    @property
-    def test_dataset(self) -> Optional[MixedSELDDataset]:
-        return self._test_ds
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# MixedSELDTestDataModule
-# ══════════════════════════════════════════════════════════════════════════════
-
-class MixedSELDTestDataModule(L.LightningDataModule):
-    """Test-only DataModule for models trained on MixedSELD (15 unified classes).
-
-    Provides 3 DataLoaders, each evaluating one dataset with unified 15-class targets:
-        idx=0 → STARSS23  test split (dev-test-sony + dev-test-tau)
-        idx=1 → TAU-NIGENS2021 test split (official fold 6)
-        idx=2 → TAU2019 eval/split0 (mixed_mode=True, split='test')
-
-    Targets are mapped to the unified 15-class schema (same as MixedSELDDataModule),
-    so metrics are directly comparable between datasets and against training targets.
-
-    Args:
-        cfg : full configuration dict.
-    """
-
-    def __init__(self, cfg: dict) -> None:
-        super().__init__()
-
-        data_cfg  = cfg.get('data', {})
-        in_cfg    = cfg['input']
-        head_cfg  = cfg.get('heads', {})
-        train_cfg = cfg.get('training', {})
-
-        self.starss_root  = Path(data_cfg['starss_root'])
-        self.tau_root     = Path(data_cfg['tau_root'])
-        self.tau2019_root = Path(data_cfg['tau2019_root'])
-
-        self.model_sr   = in_cfg['sr']
-        self.hop_length = in_cfg.get('hop_length', 320)
-        self.n_tracks   = head_cfg.get('n_tracks', 3)
-
-        self.window_s    = data_cfg.get('window_s', None)
-        self.hop_s       = data_cfg.get('hop_s', None)
-        self.batch_size  = train_cfg.get('batch_size', 1)
-        self.num_workers = data_cfg.get('num_workers', 4)
-
-        self._starss_ds:  Optional[MixedSELDDataset] = None
-        self._tau_ds:     Optional[MixedSELDDataset] = None
-        self._tau2019_ds: Optional[MixedSELDDataset] = None
-
-    def _make_loader(self, ds: MixedSELDDataset) -> DataLoader:
-        collate = None if ds.windowed else SELDDataset.collate_fn
-        return DataLoader(
-            ds,
-            batch_size         = self.batch_size,
-            shuffle            = False,
-            num_workers        = self.num_workers,
-            collate_fn         = collate,
-            pin_memory         = False,
-            persistent_workers = self.num_workers > 0,
-        )
-
-    def setup(self, stage: Optional[str] = None) -> None:
-        common = dict(
-            split      = 'test',
-            model_sr   = self.model_sr,
-            hop_length = self.hop_length,
-            n_tracks   = self.n_tracks,
-            window_s   = self.window_s,
-            hop_s      = self.hop_s,
-            augment    = None,
-        )
-        starss_ds = STARSS23Dataset(root=self.starss_root, **common)
-        tau_ds    = TAUNIGENSDataset(root=self.tau_root, **common)
-        tau2019_ds = TAU2019Dataset(root=self.tau2019_root, mixed_mode=True, **common)
-
-        self._starss_ds  = MixedSELDDataset([starss_ds],  [STARSS_TO_UNIFIED])
-        self._tau_ds     = MixedSELDDataset([tau_ds],     [NIGENS_TO_UNIFIED])
-        self._tau2019_ds = MixedSELDDataset([tau2019_ds], [TAU2019_TO_UNIFIED])
-
-    def test_dataloader(self) -> List[DataLoader]:
-        return [
-            self._make_loader(self._starss_ds),
-            self._make_loader(self._tau_ds),
-            self._make_loader(self._tau2019_ds),
-        ]
 
 
 # ══════════════════════════════════════════════════════════════════════════════

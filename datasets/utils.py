@@ -3,19 +3,15 @@ datasets/utils.py — Shared Utilities for the SELD Dataset Pipeline
 ===================================================================
 SELDDataset
     Abstract base class.  Handles windowing, Multi-ACCDOA target
-    construction, zero-padding, class-based oversampling, and collate_fn
-    for variable-length clips.  Subclasses implement ``_collect_clips``,
-    ``_parse_csv``, and the ``n_classes`` property.
+    construction, zero-padding, and collate_fn for variable-length clips.
+    Subclasses implement ``_collect_clips``, ``_parse_csv``, and the
+    ``n_classes`` property.
 
 SELDAugment
     FOA-only SELD data augmentation with 3 mutually exclusive techniques:
     (A) 16 Patterns — Mazzon et al. foa_augmentations.pdf, Table 1
     (B) Gain Scaling — g ~ U(gain_min, gain_max) on all 4 channels
     (C) White Noise Injection — RMS-relative noise on all 4 channels
-
-MixedSELDDataset
-    Concatenated STARSS23 + TAU-NIGENS2021 + TAU2019 under a unified
-    15-class schema.  Per-dataset class→unified remapping on-the-fly.
 
 Target tensor convention
     ``target : (T_mel, N_tracks, C_classes, 3)``
@@ -31,7 +27,6 @@ DISIM Department — University of L'Aquila
 
 from __future__ import annotations
 
-import bisect
 import math
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -160,48 +155,7 @@ class SELDDataset(Dataset, ABC):
                     base_items.append((i, start))
                     start += self.hop_samples
 
-        if self.augment is None or self.split != 'train':
-            return [(ci, ss, False) for ci, ss in base_items]
-
-        # ── Class-based oversampling ──────────────────────────────────────
-        samples_per_csv = round(self.orig_sr * self.FRAME_DURATION_S)
-
-        def _active(clip_idx: int, start_sample: int) -> set:
-            events = self._events[clip_idx]
-            if not self.windowed:
-                return {cls for (_, cls, *_) in events}
-            s_f = start_sample // samples_per_csv
-            e_f = (start_sample + self.window_samples) // samples_per_csv
-            return {cls for (f, cls, *_) in events if s_f <= f < e_f}
-
-        class_counts: Dict[int, int] = {c: 0 for c in range(self.n_classes)}
-        item_classes: List[set] = []
-        for ci, ss in base_items:
-            cls_set = _active(ci, ss)
-            item_classes.append(cls_set)
-            for c in cls_set:
-                if c < self.n_classes:
-                    class_counts[c] += 1
-
-        populated = [v for v in class_counts.values() if v > 0]
-        if not populated:
-            return [(ci, ss, False) for ci, ss in base_items]
-        max_count = max(populated)
-
-        rng = np.random.default_rng(42)
-        aug_items: List[Tuple[int, int]] = []
-        for c in range(self.n_classes):
-            pool   = [i for i, cls_set in enumerate(item_classes) if c in cls_set]
-            needed = max_count - class_counts[c]
-            if not pool or needed <= 0:
-                continue
-            for i in rng.choice(pool, size=needed, replace=True):
-                aug_items.append(base_items[int(i)])
-
-        return (
-            [(ci, ss, False) for ci, ss in base_items]
-            + [(ci, ss, True)  for ci, ss in aug_items]
-        )
+        return [(ci, ss, False) for ci, ss in base_items]
 
     # ── Dataset interface ────────────────────────────────────────────────────
 
@@ -523,91 +477,3 @@ class SELDAugment:
         noise_std = rms / (10.0 ** (self.noise_snr_db / 20.0))
         return wav + torch.randn_like(wav) * noise_std, target
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-# MixedSELDDataset — Unified 3-dataset SELD dataset
-# ══════════════════════════════════════════════════════════════════════════════
-
-# Unified class count for the 3-dataset mixed schema
-N_CLASSES_UNIFIED = 15
-
-# Per-dataset class-index → unified-class-index remapping vectors
-# Verified against plan Fase 4 (2026-04-30)
-STARSS_TO_UNIFIED  = np.array([0, 0, 1, 2, 3, 4, 5, 6, 7, 7, 8,  9, 10], dtype=np.int64)
-#  idx: 0(f.speech)→0  1(m.speech)→0  2(clapping)→1  3(telephone)→2
-#       4(laughter)→3  5(domestic)→4  6(footsteps)→5 7(door)→6
-#       8(music)→7     9(mus.inst.)→7 10(water)→8    11(bell)→9  12(knock)→10
-
-NIGENS_TO_UNIFIED  = np.array([11, 12, 13, 14, 0, 0, 5, 10, 0, 0, 2, 7], dtype=np.int64)
-#  idx: 0(alarm)→11  1(cry.baby)→12  2(crash)→13  3(dog)→14
-#       4(f.scream)→0  5(f.speech)→0  6(footsteps)→5  7(knock)→10
-#       8(m.scream)→0  9(m.speech)→0  10(telephone)→2  11(piano)→7
-
-TAU2019_TO_UNIFIED = np.array([0, 0, 6, 4, 4, 4, 10, 3, 4, 2, 0], dtype=np.int64)
-#  idx: 0(clearthroat)→0  1(cough)→0  2(doorslam)→6  3(drawer)→4
-#       4(keyboard)→4  5(keysDrop)→4  6(knock)→10  7(laughter)→3
-#       8(pageturn)→4  9(phone)→2  10(speech)→0
-
-
-class MixedSELDDataset(Dataset):
-    """
-    Concatenated STARSS23 + TAU-NIGENS2021 + TAU2019 under a unified 15-class schema.
-
-    Each dataset's class-specific targets are remapped to the unified class
-    space on-the-fly.  When multiple source classes map to the same unified
-    class (e.g. female_speech and male_speech → speech), the first active
-    (non-zero DOA vector) encountered wins; inactive tracks are skipped.
-
-    Args:
-        datasets : list of 3 SELDDataset instances [STARSS23, TAU-NIGENS, TAU2019]
-        mappings : list of 3 np.ndarray class→unified remapping vectors
-    """
-
-    N_CLASSES = N_CLASSES_UNIFIED
-
-    def __init__(
-        self,
-        datasets: list,
-        mappings: List[np.ndarray],
-    ) -> None:
-        self._datasets = datasets
-        self._mappings = mappings
-        self._offsets: List[int] = [0]
-        for ds in datasets:
-            self._offsets.append(self._offsets[-1] + len(ds))
-
-    def __len__(self) -> int:
-        return self._offsets[-1]
-
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Returns:
-            wav     : (4, T_samples) float32 FOA tensor
-            target  : (T_mel, N_tracks, 15, 3) float32 Multi-ACCDOA (unified schema)
-        """
-        # Identify which sub-dataset and local index
-        ds_idx    = bisect.bisect_right(self._offsets, idx, lo=1) - 1
-        local_idx = idx - self._offsets[ds_idx]
-        wav, tgt  = self._datasets[ds_idx][local_idx]
-
-        T, N, C, _ = tgt.shape
-        remapped   = torch.zeros(T, N, self.N_CLASSES, 3, dtype=tgt.dtype)
-
-        mapping = self._mappings[ds_idx]
-        for c_orig in range(C):
-            c_unif = int(mapping[c_orig])
-            # Fill only where source is active AND unified slot is still empty
-            act  = tgt[:, :, c_orig, :].norm(dim=-1) > 0         # (T, N)
-            free = remapped[:, :, c_unif, :].norm(dim=-1) == 0   # (T, N)
-            mask = (act & free).unsqueeze(-1)                     # (T, N, 1)
-            remapped[:, :, c_unif, :] = torch.where(
-                mask,
-                tgt[:, :, c_orig, :],
-                remapped[:, :, c_unif, :],
-            )
-
-        return wav, remapped
-
-    @property
-    def windowed(self) -> bool:
-        return self._datasets[0].windowed

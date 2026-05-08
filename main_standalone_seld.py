@@ -5,13 +5,14 @@ main_seld_only.py — Resumable StandaloneSELD Training Pipeline
 Trains ``StandaloneSELDModel`` (dual SED+DOA branches, no GP-AT backbone).
 
 Supported dataset modes (set via ``training.dataset_mode`` in the YAML):
-  * STARSS23       — SELDDataModule, trains on STARSS23
-  * TAU-NIGENS2021 — SELDDataModule, trains on TAU-NIGENS2021
-  * MixedSELD      — MixedSELDDataModule, trains on STARSS23 + TAU-NIGENS2021 + TAU2019
+  * STARSS23          — SELDDataModule, trains on STARSS23
+  * TAU-NIGENS2021    — SELDDataModule, trains on TAU-NIGENS2021
+  * TAU2019           — SELDDataModule, trains on TAU2019 (fold cycling)
+  * BalancedSTARSS23  — BalancedSELDDataModule, 13-class balanced training
 
-Test is ALWAYS run on BOTH STARSS23 and TAU-NIGENS2021 via a dedicated
-two-loader test DataModule (``StandaloneSELDTestDataModule``), regardless
-of the training dataset.
+For BalancedSTARSS23, test uses a dedicated 3-loader DataModule
+(``StandaloneSELDTestDataModule``) that evaluates on STARSS23, TAU-NIGENS2021,
+and TAU2019 separately, all projected to the 13-class STARSS23 space.
 
 Warm-start from any NAS-SELD checkpoint is supported via ``--pretrained-ckpt``.
 The checkpoint is automatically filtered (GP-AT keys dropped, spatial weights
@@ -44,10 +45,10 @@ Usage
         --config-file configs/experiments_standalone_seld/foa/seld_starss23.yaml \\
         --pretrained-ckpt runs/foa/deep_spec/checkpoints/exp_e3_l1_s1/98_0.3570.ckpt
 
-    # MixedSELD with custom data paths
+    # BalancedSTARSS23 with custom data paths
     .venv/bin/python main_seld_only.py \\
-        --config-file configs/experiments_standalone_seld/foa/seld_mixed.yaml \\
-        --starss-root /data/STARSS23 --tau-root /data/TAU-NIGENS2021
+        --config-file configs/experiments_standalone_seld/foa/mixed_data/conformer_mixed_specaug.yaml \\
+        --starss-root /data/STARSS23 --tau-root /data/TAU-NIGENS2021 --tau2019-root /data/TAU2019
 
     # Run all configs in a directory
     .venv/bin/python main_seld_only.py \\
@@ -62,7 +63,7 @@ Stefano Giacomelli, Ph.D. candidate
 DISIM Department — University of L'Aquila
 """
 
-from dotenv import load_dotenv
+#from dotenv import load_dotenv
 
 import atexit
 import json
@@ -90,13 +91,11 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from experiments_standalone_seld.train import StandaloneSELDModule  # noqa: E402
-from datasets.datamodule import SELDDataModule, MixedSELDDataModule   # noqa: E402
+from datasets.datamodule import SELDDataModule                        # noqa: E402
 from datasets.starss23 import STARSS23Dataset                         # noqa: E402
 from datasets.tau_nigens import TAUNIGENSDataset                      # noqa: E402
 from datasets.tau2019 import TAU2019Dataset                           # noqa: E402
-from datasets.utils import (SELDDataset, MixedSELDDataset,            # noqa: E402
-                             STARSS_TO_UNIFIED, NIGENS_TO_UNIFIED,
-                             TAU2019_TO_UNIFIED)
+from datasets.utils import SELDDataset                                # noqa: E402
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -133,10 +132,10 @@ STATE_FILE  = _ROOT / 'runs' / 'standalone_seld' / 'experiment_state.json'
 
 class StandaloneSELDTestDataModule(L.LightningDataModule):
     """
-    Provides three test DataLoaders for MixedSELD evaluation:
-      idx=0 → STARSS23 test split
-      idx=1 → TAU-NIGENS2021 test split
-      idx=2 → TAU2019 eval/split0 (mixed_mode=True)
+    Provides three test DataLoaders for BalancedSTARSS23 evaluation:
+      idx=0 → STARSS23 test split          (identity, 13-class)
+      idx=1 → TAU-NIGENS2021 test split    (projected via NIGENS_TO_STARSS13)
+      idx=2 → TAU2019 eval/split0          (projected via TAU2019_TO_STARSS13)
     """
 
     def __init__(
@@ -169,6 +168,9 @@ class StandaloneSELDTestDataModule(L.LightningDataModule):
         self._tau2019_ds:  Optional[SELDDataset] = None
 
     def setup(self, stage: Optional[str] = None) -> None:
+        from datasets.balanced import (ProjectedSELDDataset,      # noqa: E402
+                                       NIGENS_TO_STARSS13,
+                                       TAU2019_TO_STARSS13)
         common = dict(
             split      = 'test',
             model_sr   = self.model_sr,
@@ -178,19 +180,18 @@ class StandaloneSELDTestDataModule(L.LightningDataModule):
             hop_s      = self.hop_s,
             augment    = None,
         )
-        # Wrap each raw dataset in MixedSELDDataset so targets are remapped to
-        # the unified 15-class space — same mapping used during training.
-        # Without this, class indices wouldn't match between model output and targets.
         starss_raw   = STARSS23Dataset(root=self.starss_root, **common)
         tau_raw      = TAUNIGENSDataset(root=self.tau_root,   **common)
         tau2019_raw  = TAU2019Dataset(
             root       = self.tau2019_root,
-            mixed_mode = True,   # fixed eval/split0 for cross-dataset comparability
+            mixed_mode = True,
             **common,
         )
-        self._starss_ds  = MixedSELDDataset([starss_raw],   [STARSS_TO_UNIFIED])
-        self._tau_ds     = MixedSELDDataset([tau_raw],      [NIGENS_TO_UNIFIED])
-        self._tau2019_ds = MixedSELDDataset([tau2019_raw],  [TAU2019_TO_UNIFIED])
+        # STARSS23 is already in 13-class space — use directly.
+        # NIGENS and TAU2019 are projected to 13-class STARSS23 space via ProjectedSELDDataset.
+        self._starss_ds  = starss_raw
+        self._tau_ds     = ProjectedSELDDataset(tau_raw,      NIGENS_TO_STARSS13)
+        self._tau2019_ds = ProjectedSELDDataset(tau2019_raw,  TAU2019_TO_STARSS13)
 
     def _make_loader(self, ds: SELDDataset) -> DataLoader:
         collate = None if ds.windowed else SELDDataset.collate_fn
@@ -402,17 +403,16 @@ def _build_cfg(exp_yaml_path: Path, args, starss_root: Path, tau_root: Path,
         data_cfg['root_path'] = str(tau_root)
     elif dataset_mode == 'TAU2019':
         data_cfg['root_path'] = str(tau2019_root)
-    elif dataset_mode == 'MixedSELD':
+    elif dataset_mode == 'BalancedSTARSS23':
         data_cfg['starss_root']   = str(starss_root)
         data_cfg['tau_root']      = str(tau_root)
         data_cfg['tau2019_root']  = str(tau2019_root)
     else:
         raise ValueError(f'Unknown dataset_mode: {dataset_mode!r}. '
-                         'Expected STARSS23 | TAU-NIGENS2021 | TAU2019 | MixedSELD.')
+                         'Expected STARSS23 | TAU-NIGENS2021 | TAU2019 | BalancedSTARSS23.')
 
-    # 4. semantic.dataset — needed by SELDDataModule
-    sem_dataset = 'STARSS23' if dataset_mode in ('STARSS23', 'MixedSELD') else 'TAU-NIGENS2021'
-    cfg.setdefault('semantic', {})['dataset'] = sem_dataset
+    # 4. semantic.dataset — needed by SELDDataModule / BalancedSELDDataModule
+    cfg.setdefault('semantic', {})['dataset'] = dataset_mode
 
     return cfg
 
@@ -511,17 +511,21 @@ def _run_experiment(
 
     # 4. Training DataModule
     dataset_mode = cfg['training']['dataset_mode']
-    if dataset_mode in ('STARSS23', 'TAU-NIGENS2021', 'TAU2019'):
+    if dataset_mode in ('STARSS23', 'TAU-NIGENS2021'):
         train_dm = SELDDataModule(cfg)
-    elif dataset_mode == 'MixedSELD':
-        train_dm = MixedSELDDataModule(cfg)
+    elif dataset_mode == 'TAU2019':
+        from datasets.datamodule import FoldCyclingDataModule   # noqa: E402
+        train_dm = FoldCyclingDataModule(cfg)
+    elif dataset_mode == 'BalancedSTARSS23':
+        from datasets.datamodule import BalancedSELDDataModule  # noqa: E402
+        train_dm = BalancedSELDDataModule(cfg)
     else:
         raise ValueError(f'Unknown dataset_mode: {dataset_mode!r}')
 
-    # 5. Test DataModule — single-dataset: reuse train_dm; MixedSELD: 2-loader
+    # 5. Test DataModule — single-dataset: reuse train_dm; BalancedSTARSS23: 3-loader
     in_cfg   = cfg['input']
     data_cfg = cfg.get('data', {})
-    if dataset_mode == 'MixedSELD':
+    if dataset_mode == 'BalancedSTARSS23':
         test_dm = StandaloneSELDTestDataModule(
             starss_root   = starss_root,
             tau_root      = tau_root,
@@ -609,6 +613,9 @@ def _run_experiment(
         logger                  = [tb_logger, wb_logger],
         num_sanity_val_steps    = 0,
     )
+    if dataset_mode == 'TAU2019':
+        # FoldCyclingDataModule needs a fresh dataloader every epoch
+        trainer_kwargs['reload_dataloaders_every_n_epochs'] = 1
     if args.limit_batches > 0:
         trainer_kwargs.update(
             limit_train_batches = args.limit_batches,
@@ -729,5 +736,5 @@ def main() -> None:
 
 
 if __name__ == '__main__':
-    load_dotenv()
+    #load_dotenv()
     main()

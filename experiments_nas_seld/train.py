@@ -70,17 +70,19 @@ from .loss import (
 
 # Dataset → number of classes mapping (mirrors main_nas-seld.py DATASET_ROOTS)
 _N_CLASSES: Dict[str, int] = {
-    'STARSS23':       13,
-    'TAU-NIGENS2021': 12,
-    'MixedSELD':      15,
+    'STARSS23':          13,
+    'TAU-NIGENS2021':    12,
+    'TAU2019':           11,
+    'BalancedSTARSS23':  13,
 }
 
 # Dataset → native (original) sample rate; all datasets are 24 kHz after resampling.
 # NASModel.forward resamples to cfg['input']['sr'] only when orig_sr is passed.
 _ORIG_SR: Dict[str, int] = {
-    'STARSS23':       24000,
-    'TAU-NIGENS2021': 24000,
-    'MixedSELD':      24000,
+    'STARSS23':          24000,
+    'TAU-NIGENS2021':    24000,
+    'TAU2019':           24000,   # TAU2019Dataset resamples to model_sr internally
+    'BalancedSTARSS23':  24000,
 }
 
 
@@ -176,11 +178,11 @@ class NASLightningModule(L.LightningModule):
         self.metrics     = SELDMetrics(angle_thresh=angle_thresh)
         self.sem_metrics = SemanticClassificationMetrics(n_classes)
 
-        # Extra accumulators for MixedSELD test (3 DataLoaders)
+        # Extra accumulators for BalancedSTARSS23 test (3 DataLoaders)
         self.metrics_starss  = SELDMetrics(angle_thresh=angle_thresh)
         self.metrics_tau     = SELDMetrics(angle_thresh=angle_thresh)
         self.metrics_tau2019 = SELDMetrics(angle_thresh=angle_thresh)
-        self._mixed_test = (dataset_name == 'MixedSELD')
+        self._mixed_test = (dataset_name == 'BalancedSTARSS23')
 
         self._perclass_metrics = bool(train_cfg.get('perclass_metrics', False))
 
@@ -341,7 +343,7 @@ class NASLightningModule(L.LightningModule):
     ) -> None:
         """Accumulate SELD (and semantic) metrics on the test split.
 
-        When training on MixedSELD, three DataLoaders are used (idx 0/1/2),
+        When training on BalancedSTARSS23, three DataLoaders are used (idx 0/1/2),
         each accumulating into a separate SELDMetrics instance.
         """
         x, tgt_spatial = batch
@@ -365,7 +367,7 @@ class NASLightningModule(L.LightningModule):
     def on_test_epoch_end(self) -> None:
         """Flush all test metrics; log scalars to TensorBoard, full results to JSON."""
         if self._mixed_test:
-            # MixedSELD: 3 separate metric sets, no semantic metrics
+            # BalancedSTARSS23: 3 separate metric sets, no semantic metrics
             starss = self.metrics_starss.compute();  self.metrics_starss.reset()
             tau    = self.metrics_tau.compute();     self.metrics_tau.reset()
             tau2019 = self.metrics_tau2019.compute(); self.metrics_tau2019.reset()

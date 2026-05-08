@@ -1,0 +1,424 @@
+{
+  "section1_clip": {
+    "source_item_counts": {
+      "starss23": 72,
+      "nigens": 61,
+      "tau2019": 39,
+      "mixup": 118
+    },
+    "total_items": 290,
+    "per_class_counts": {
+      "female_speech": {
+        "total": 159,
+        "starss23": 40,
+        "nigens": 59,
+        "tau2019": 0,
+        "mixup": 60
+      },
+      "male_speech": {
+        "total": 226,
+        "starss23": 59,
+        "nigens": 56,
+        "tau2019": 0,
+        "mixup": 111
+      },
+      "clapping": {
+        "total": 59,
+        "starss23": 9,
+        "nigens": 0,
+        "tau2019": 0,
+        "mixup": 50
+      },
+      "telephone": {
+        "total": 106,
+        "starss23": 16,
+        "nigens": 31,
+        "tau2019": 38,
+        "mixup": 21
+      },
+      "laughter": {
+        "total": 149,
+        "starss23": 47,
+        "nigens": 0,
+        "tau2019": 38,
+        "mixup": 64
+      },
+      "domestic_sounds": {
+        "total": 112,
+        "starss23": 20,
+        "nigens": 0,
+        "tau2019": 39,
+        "mixup": 53
+      },
+      "walk_footsteps": {
+        "total": 124,
+        "starss23": 33,
+        "nigens": 44,
+        "tau2019": 0,
+        "mixup": 47
+      },
+      "door_open_close": {
+        "total": 102,
+        "starss23": 25,
+        "nigens": 0,
+        "tau2019": 37,
+        "mixup": 40
+      },
+      "music": {
+        "total": 109,
+        "starss23": 21,
+        "nigens": 58,
+        "tau2019": 0,
+        "mixup": 30
+      },
+      "musical_instr.": {
+        "total": 68,
+        "starss23": 3,
+        "nigens": 58,
+        "tau2019": 0,
+        "mixup": 7
+      },
+      "water_tap": {
+        "total": 59,
+        "starss23": 5,
+        "nigens": 0,
+        "tau2019": 0,
+        "mixup": 54
+      },
+      "bell": {
+        "total": 59,
+        "starss23": 6,
+        "nigens": 0,
+        "tau2019": 0,
+        "mixup": 53
+      },
+      "knock": {
+        "total": 100,
+        "starss23": 10,
+        "nigens": 31,
+        "tau2019": 39,
+        "mixup": 20
+      }
+    },
+    "imbalance_ratio": 3.831
+  },
+  "section2_windowed": {
+    "window_s": 10.0,
+    "hop_s": 2.5,
+    "total_windows": 9929,
+    "source_win_counts": {
+      "starss23": 4430,
+      "nigens": 1281,
+      "tau2019": 788,
+      "mixup": 3430
+    },
+    "n_silent": 106,
+    "per_class_windows": {
+      "female_speech": {
+        "total": 5019,
+        "starss23": 2411,
+        "nigens": 583,
+        "tau2019": 0,
+        "mixup": 2025
+      },
+      "male_speech": {
+        "total": 5670,
+        "starss23": 2689,
+        "nigens": 366,
+        "tau2019": 0,
+        "mixup": 2615
+      },
+      "clapping": {
+        "total": 627,
+        "starss23": 72,
+        "nigens": 0,
+        "tau2019": 0,
+        "mixup": 555
+      },
+      "telephone": {
+        "total": 902,
+        "starss23": 113,
+        "nigens": 263,
+        "tau2019": 424,
+        "mixup": 102
+      },
+      "laughter": {
+        "total": 1807,
+        "starss23": 905,
+        "nigens": 0,
+        "tau2019": 434,
+        "mixup": 468
+      },
+      "domestic_sounds": {
+        "total": 2785,
+        "starss23": 733,
+        "nigens": 0,
+        "tau2019": 750,
+        "mixup": 1302
+      },
+      "walk_footsteps": {
+        "total": 1188,
+        "starss23": 338,
+        "nigens": 590,
+        "tau2019": 0,
+        "mixup": 260
+      },
+      "door_open_close": {
+        "total": 842,
+        "starss23": 202,
+        "nigens": 0,
+        "tau2019": 391,
+        "mixup": 249
+      },
+      "music": {
+        "total": 2638,
+        "starss23": 1096,
+        "nigens": 659,
+        "tau2019": 0,
+        "mixup": 883
+      },
+      "musical_instr.": {
+        "total": 832,
+        "starss23": 164,
+        "nigens": 659,
+        "tau2019": 0,
+        "mixup": 9
+      },
+      "water_tap": {
+        "total": 498,
+        "starss23": 59,
+        "nigens": 0,
+        "tau2019": 0,
+        "mixup": 439
+      },
+      "bell": {
+        "total": 1292,
+        "starss23": 159,
+        "nigens": 0,
+        "tau2019": 0,
+        "mixup": 1133
+      },
+      "knock": {
+        "total": 740,
+        "starss23": 39,
+        "nigens": 180,
+        "tau2019": 453,
+        "mixup": 68
+      }
+    },
+    "imbalance_ratio": 11.386
+  },
+  "section3_doa": {
+    "female_speech": {
+      "n_events": 102538,
+      "az": {
+        "mean": 6.15,
+        "std": 79.77,
+        "min": -180.0,
+        "max": 180.0
+      },
+      "el": {
+        "mean": -12.74,
+        "std": 11.38,
+        "min": -61.0,
+        "max": 40.0
+      }
+    },
+    "male_speech": {
+      "n_events": 148450,
+      "az": {
+        "mean": -45.64,
+        "std": 85.14,
+        "min": -180.0,
+        "max": 180.0
+      },
+      "el": {
+        "mean": -11.63,
+        "std": 11.39,
+        "min": -57.0,
+        "max": 40.0
+      }
+    },
+    "clapping": {
+      "n_events": 8295,
+      "az": {
+        "mean": -14.16,
+        "std": 76.38,
+        "min": -180.0,
+        "max": 180.0
+      },
+      "el": {
+        "mean": -18.25,
+        "std": 2.76,
+        "min": -28.0,
+        "max": 2.0
+      }
+    },
+    "telephone": {
+      "n_events": 8386,
+      "az": {
+        "mean": 17.06,
+        "std": 99.53,
+        "min": -180.0,
+        "max": 180.0
+      },
+      "el": {
+        "mean": -5.68,
+        "std": 18.34,
+        "min": -42.0,
+        "max": 40.0
+      }
+    },
+    "laughter": {
+      "n_events": 16316,
+      "az": {
+        "mean": 10.86,
+        "std": 66.2,
+        "min": -180.0,
+        "max": 177.0
+      },
+      "el": {
+        "mean": -23.88,
+        "std": 21.53,
+        "min": -60.0,
+        "max": 40.0
+      }
+    },
+    "domestic_sounds": {
+      "n_events": 70262,
+      "az": {
+        "mean": -51.59,
+        "std": 77.72,
+        "min": -180.0,
+        "max": 170.0
+      },
+      "el": {
+        "mean": -23.9,
+        "std": 14.99,
+        "min": -76.0,
+        "max": 40.0
+      }
+    },
+    "walk_footsteps": {
+      "n_events": 15491,
+      "az": {
+        "mean": 2.74,
+        "std": 90.55,
+        "min": -180.0,
+        "max": 180.0
+      },
+      "el": {
+        "mean": -12.85,
+        "std": 22.9,
+        "min": -79.0,
+        "max": 40.0
+      }
+    },
+    "door_open_close": {
+      "n_events": 2889,
+      "az": {
+        "mean": -16.07,
+        "std": 74.23,
+        "min": -180.0,
+        "max": 170.0
+      },
+      "el": {
+        "mean": 0.18,
+        "std": 11.7,
+        "min": -40.0,
+        "max": 40.0
+      }
+    },
+    "music": {
+      "n_events": 77699,
+      "az": {
+        "mean": -61.86,
+        "std": 95.49,
+        "min": -180.0,
+        "max": 180.0
+      },
+      "el": {
+        "mean": -18.15,
+        "std": 14.12,
+        "min": -48.0,
+        "max": 40.0
+      }
+    },
+    "musical_instr.": {
+      "n_events": 28407,
+      "az": {
+        "mean": -20.55,
+        "std": 85.33,
+        "min": -180.0,
+        "max": 180.0
+      },
+      "el": {
+        "mean": -8.21,
+        "std": 15.31,
+        "min": -40.0,
+        "max": 40.0
+      }
+    },
+    "water_tap": {
+      "n_events": 6531,
+      "az": {
+        "mean": 26.17,
+        "std": 107.66,
+        "min": -61.0,
+        "max": 160.0
+      },
+      "el": {
+        "mean": -7.57,
+        "std": 1.95,
+        "min": -10.0,
+        "max": -6.0
+      }
+    },
+    "bell": {
+      "n_events": 14169,
+      "az": {
+        "mean": -78.7,
+        "std": 28.48,
+        "min": -109.0,
+        "max": -19.0
+      },
+      "el": {
+        "mean": -19.56,
+        "std": 11.15,
+        "min": -33.0,
+        "max": -7.0
+      }
+    },
+    "knock": {
+      "n_events": 2730,
+      "az": {
+        "mean": -1.45,
+        "std": 98.44,
+        "min": -180.0,
+        "max": 179.0
+      },
+      "el": {
+        "mean": 0.27,
+        "std": 18.02,
+        "min": -40.0,
+        "max": 40.0
+      }
+    },
+    "_ALL": {
+      "n_events": 502163,
+      "az": {
+        "mean": -31.68,
+        "std": 88.5,
+        "min": -180.0,
+        "max": 180.0
+      },
+      "el": {
+        "mean": -14.87,
+        "std": 14.54,
+        "min": -79.0,
+        "max": 40.0
+      }
+    }
+  },
+  "section4_batch_ok": true
+}

@@ -42,7 +42,7 @@ track_smoothing:
 # ── Output heads ──────────────────────────────────────────────────────────────
 heads:
   n_tracks:  3
-  n_classes: 15
+  n_classes: 13
   proj_dim:  null
 
 # ── Cross-stitching between SED and DOA branches ──────────────────────────────
@@ -52,7 +52,7 @@ cross_stitch:
 
 # ── Training ──────────────────────────────────────────────────────────────────
 training:
-  dataset_mode:     MixedSELD
+  dataset_mode:     BalancedSTARSS23
   epochs:           200
   batch_size:       4
   patience:         30

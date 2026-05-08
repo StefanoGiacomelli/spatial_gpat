@@ -14,7 +14,7 @@ input:
   n_fft: 512
 
 semantic:
-  dataset:    MixedSELD
+  dataset:    BalancedSTARSS23
   checkpoint: semantic_backbone/epanns/checkpoint_closeto_.44.pt
   early_group: {init: pretrained, frozen: false}
   late_group:  {init: pretrained, frozen: false}
@@ -51,7 +51,7 @@ track_smoothing_spatial:
 
 heads:
   n_tracks:  3
-  n_classes: 15
+  n_classes: 13
 
 data:
   format:       foa
@@ -77,7 +77,7 @@ training:
   
   lambda_spatial:   0.9
   lambda_semantic:  0.1
-  beta_sed:         0.7
+  beta_sed:         0.85
   focal_gamma:      2.0
   angle_thresh:     20.0
   
