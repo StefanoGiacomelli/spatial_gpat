@@ -71,9 +71,9 @@ augmentation:
   noise_snr_db: 35.0
 
 training:
-  epochs:           12
+  epochs:           100
   batch_size:       4
-  patience:         5
+  patience:         30
   
   lambda_spatial:   0.9
   lambda_semantic:  0.1
@@ -85,7 +85,7 @@ training:
   
   lr:               5.0e-4
   lr_reduce_factor: 0.75
-  lr_patience:      2
+  lr_patience:      10
   lr_min:           1.0e-5
   
   window_s:         10.0
