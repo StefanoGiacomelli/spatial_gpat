@@ -1,5 +1,5 @@
 experiment:
-  name: resnet_mixed_specaug
+  name: resnet_starss23_specaug_focal
   seed: 42
 
 input:
@@ -49,18 +49,18 @@ cross_stitch:
 
 # ── Training ──────────────────────────────────────────────────────────────────
 training:
-  dataset_mode:     BalancedSTARSS23
-  epochs:           200
-  batch_size:       1
+  dataset_mode:     STARSS23
+  epochs:           50
+  batch_size:       2
   patience:         30
-  beta_sed:         0.6
-  focal_gamma:      0.0
+  beta_sed:         0.8
+  focal_gamma:      2.0
   pos_weight_max:   20.0
   angle_thresh:     20.0
   lr:               3.0e-4
   scheduler:        reduce_on_plateau
   lr_reduce_factor: 0.75
-  lr_patience:      20
+  lr_patience:      5
   lr_min:           1.0e-5
 
 # ── Data augmentation ─────────────────────────────────────────────────────────
@@ -79,8 +79,9 @@ augmentation:
     n_time_masks:    2
     time_mask_param: 30      # 300 ms max per mask (3% of 10s clip)
 
-# ── Data — roots injected at runtime via CLI (--starss-root / --tau-root / --tau2019-root)
+# ── Data ──────────────────────────────────────────────────────────────────────
 data:
+  root_path:    data/STARSS23
   window_s:     10.0
   hop_s:        2.5
   val_fraction: 0.2

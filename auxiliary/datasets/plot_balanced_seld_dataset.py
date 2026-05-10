@@ -28,6 +28,7 @@ Run
 
 from __future__ import annotations
 
+import math
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -39,6 +40,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
 
 _ROOT  = Path(__file__).resolve().parent.parent.parent
 FIGDIR = _ROOT / 'figures'
@@ -59,7 +61,7 @@ HOP_LENGTH   = 240
 N_TRACKS     = 3
 N_CLASSES    = 13
 VAL_FRACTION = 0.2
-VAL_SEED     = 42
+VAL_SEED     = 2
 WINDOW_S     = 10.0
 HOP_S        = 2.5
 FRAME_DUR    = 0.1   # seconds per annotation frame
@@ -431,71 +433,154 @@ def plot_class_distributions(
 
 # ── Figure 2 ──────────────────────────────────────────────────────────────────
 
-def _doa_subplot(
-    ax: plt.Axes,
-    azs: np.ndarray,
-    els: np.ndarray,
-    title: str,
-) -> None:
-    n = len(azs)
-    if n == 0:
-        ax.set_title(f'{title}\n(no events)', fontsize=7, fontweight='bold')
-        ax.axis('off')
-        return
-    az_bins = np.arange(-180, 181, 20)
-    el_bins = np.arange(-90,   91, 15)
-    ax.hist(azs, bins=az_bins, density=True, color='#4C72B0', alpha=0.65,
-            label='Azimuth')
-    ax2 = ax.twinx()
-    ax2.hist(els, bins=el_bins, density=True, color='#55A868', alpha=0.65,
-             label='Elevation')
-    ax2.set_yticks([])
-    ax.set_xlim(-200, 200)
-    ax.set_xlabel('Angle (°)', fontsize=6)
-    ax.set_ylabel('Density', fontsize=6, color='#4C72B0')
-    ax.tick_params(axis='both', labelsize=5.5)
-    ax.set_title(f'{title}  (n={n:,})', fontsize=7, fontweight='bold')
-    ax.yaxis.grid(True, linestyle=':', alpha=0.4)
-    ax.set_axisbelow(True)
-
-
 def plot_doa_distributions(
     ds_fc:   BalancedSTARSS23Dataset,
     figpath: Path,
 ) -> None:
+    """
+    Per-class DOA figure with the same layout as STARSS23_doa_analysis.svg:
+    scatter (az × el) at centre, azimuth histogram on top, elevation histogram
+    on the right. One 2×2 panel per class + one Overall panel.
+    """
     print('  Collecting DOA events …')
-    doa = _collect_doa(ds_fc)
+    doa = _collect_doa(ds_fc)   # Dict[int, Tuple[np.ndarray, np.ndarray]]
 
-    # Combined (all classes)
-    all_azs = np.concatenate([doa[c][0] for c in range(N_CLASSES) if len(doa[c][0])])
-    all_els = np.concatenate([doa[c][1] for c in range(N_CLASSES) if len(doa[c][1])])
+    N_PER_ROW = 4
+    n_slots   = N_CLASSES + 1   # per-class + Overall
+    n_rows    = math.ceil(n_slots / N_PER_ROW)
 
-    n_rows, n_cols = 5, 3
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(14, 18), constrained_layout=True)
-    fig.suptitle(
-        'BalancedSTARSS23 Training Set — DOA Marginal Distributions\n'
-        '(Blue = Azimuth, Green = Elevation)',
-        fontsize=11,
+    cmap   = plt.get_cmap('tab20')
+    colors = [cmap(i % cmap.N) for i in range(N_CLASSES)]
+
+    fig = plt.figure(figsize=(14.0, 3.8 * n_rows))
+    outer_gs = GridSpec(
+        n_rows, N_PER_ROW,
+        figure  = fig,
+        hspace  = 0.55,
+        wspace  = 0.30,
+        left    = 0.05,
+        right   = 0.97,
+        top     = 0.92,
+        bottom  = 0.06,
     )
 
-    # Subplots 0-12: per class
-    for c in range(N_CLASSES):
-        row, col = divmod(c, n_cols)
-        _doa_subplot(axes[row, col], doa[c][0], doa[c][1], CLASS_NAMES[c])
+    def _draw_panel(slot_idx, az, el, title, color, scatter_data=None):
+        row = slot_idx // N_PER_ROW
+        col = slot_idx % N_PER_ROW
 
-    # Subplot 13: combined
-    row13, col13 = divmod(13, n_cols)
-    _doa_subplot(axes[row13, col13], all_azs, all_els, 'All Classes (combined)')
+        inner = GridSpecFromSubplotSpec(
+            2, 2,
+            subplot_spec  = outer_gs[row, col],
+            height_ratios = [1, 3],
+            width_ratios  = [3, 1],
+            hspace        = 0.05,
+            wspace        = 0.05,
+        )
+        ax_az = fig.add_subplot(inner[0, 0])
+        ax_sc = fig.add_subplot(inner[1, 0])
+        ax_el = fig.add_subplot(inner[1, 1])
+        ax_az.sharex(ax_sc)
+        ax_el.sharey(ax_sc)
 
-    # Subplot 14: empty
-    row14, col14 = divmod(14, n_cols)
-    axes[row14, col14].axis('off')
+        # ── Scatter (centre) ──────────────────────────────────────────────────
+        if scatter_data is not None:
+            for az_c, el_c, col_c in scatter_data:
+                if len(az_c):
+                    ax_sc.scatter(az_c, el_c, s=1.0, alpha=0.15,
+                                  color=col_c, linewidths=0, rasterized=True)
+        else:
+            if len(az):
+                ax_sc.scatter(az, el, s=1.5, alpha=0.25,
+                              color=color, linewidths=0, rasterized=True)
 
-    # Shared legend
-    az_patch = mpatches.Patch(color='#4C72B0', alpha=0.7, label='Azimuth [-180°, 180°]')
-    el_patch = mpatches.Patch(color='#55A868', alpha=0.7, label='Elevation [-90°, 90°]')
-    fig.legend(handles=[az_patch, el_patch], loc='lower right',
-               fontsize=9, framealpha=0.9)
+        ax_sc.set_xlim(-180, 180)
+        ax_sc.set_ylim(-90, 90)
+        ax_sc.set_xlabel('Azimuth (°)', fontsize=6, labelpad=1)
+        ax_sc.set_ylabel('Elevation (°)', fontsize=6, labelpad=1)
+        ax_sc.tick_params(axis='both', labelsize=5)
+        ax_sc.set_xticks([-180, -90, 0, 90, 180])
+        ax_sc.set_yticks([-90, -45, 0, 45, 90])
+
+        # ── Azimuth histogram (top) ───────────────────────────────────────────
+        n_pts = (len(az) if scatter_data is None
+                 else sum(len(d[0]) for d in scatter_data))
+        if scatter_data is not None:
+            az_lists = [np.array(d[0]) for d in scatter_data]
+            non_empty = [(a, d[2]) for a, d in zip(az_lists, scatter_data) if len(a)]
+            if non_empty:
+                ax_az.hist([a for a, _ in non_empty], bins=72, range=(-180, 180),
+                           stacked=True, color=[c for _, c in non_empty],
+                           alpha=0.85, linewidth=0)
+        else:
+            if len(az):
+                ax_az.hist(az, bins=72, range=(-180, 180),
+                           color=color, alpha=0.85, linewidth=0)
+
+        ax_az.set_title(f'{title}\n({n_pts:,} frames)', fontsize=7,
+                        pad=2, fontweight='bold')
+        ax_az.tick_params(labelbottom=False, labelsize=5)
+        ax_az.set_yticks([])
+        ax_az.spines[['top', 'right', 'left']].set_visible(False)
+
+        # ── Elevation histogram rotated (right) ───────────────────────────────
+        if scatter_data is not None:
+            el_lists = [np.array(d[1]) for d in scatter_data]
+            non_empty = [(e, d[2]) for e, d in zip(el_lists, scatter_data) if len(e)]
+            if non_empty:
+                ax_el.hist([e for e, _ in non_empty], bins=36, range=(-90, 90),
+                           stacked=True, orientation='horizontal',
+                           color=[c for _, c in non_empty], alpha=0.85, linewidth=0)
+        else:
+            if len(el):
+                ax_el.hist(el, bins=36, range=(-90, 90), orientation='horizontal',
+                           color=color, alpha=0.85, linewidth=0)
+
+        ax_el.tick_params(labelleft=False, labelsize=5)
+        ax_el.set_xticks([])
+        ax_el.spines[['top', 'right', 'bottom']].set_visible(False)
+
+    # ── Per-class panels ──────────────────────────────────────────────────────
+    for i, label in enumerate(CLASS_NAMES):
+        az_arr, el_arr = doa.get(i, (np.array([]), np.array([])))
+        _draw_panel(i, az_arr, el_arr, label, colors[i])
+
+    # ── Overall panel ─────────────────────────────────────────────────────────
+    scatter_data = [
+        (doa.get(c, (np.array([]), np.array([])))[0],
+         doa.get(c, (np.array([]), np.array([])))[1],
+         colors[c])
+        for c in range(N_CLASSES)
+    ]
+    _draw_panel(N_CLASSES, np.array([]), np.array([]), 'Overall', None,
+                scatter_data=scatter_data)
+
+    # ── Hide remaining empty slots ────────────────────────────────────────────
+    for j in range(n_slots, n_rows * N_PER_ROW):
+        ax_d = fig.add_subplot(outer_gs[j // N_PER_ROW, j % N_PER_ROW])
+        ax_d.set_visible(False)
+
+    # ── Legend ────────────────────────────────────────────────────────────────
+    handles = [
+        plt.Line2D([0], [0], marker='o', color='w',
+                   markerfacecolor=colors[c], markersize=5, label=CLASS_NAMES[c])
+        for c in range(N_CLASSES)
+    ]
+    fig.legend(
+        handles        = handles,
+        loc            = 'lower center',
+        ncol           = min(N_CLASSES, 7),
+        fontsize       = 6,
+        frameon        = False,
+        bbox_to_anchor = (0.5, 0.0),
+        bbox_transform = fig.transFigure,
+    )
+
+    fig.suptitle(
+        'BalancedSTARSS23 — DOA distribution per class'
+        ' (train split, native 100 ms resolution)',
+        fontsize = 10,
+        y        = 0.995,
+    )
 
     figpath.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(figpath, dpi=600, format='svg', bbox_inches='tight')
@@ -532,7 +617,7 @@ def main() -> None:
         val_fraction = VAL_FRACTION,
         val_seed     = VAL_SEED,
         augment      = None,
-        balance_seed = 42,
+        balance_seed = 2,
     )
     common_starss = dict(
         root         = STARSS_ROOT,

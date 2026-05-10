@@ -63,7 +63,7 @@ Stefano Giacomelli, Ph.D. candidate
 DISIM Department — University of L'Aquila
 """
 
-from dotenv import load_dotenv
+#from dotenv import load_dotenv
 
 import atexit
 import json
@@ -736,5 +736,5 @@ def main() -> None:
 
 
 if __name__ == '__main__':
-    load_dotenv()
+    #load_dotenv()
     main()

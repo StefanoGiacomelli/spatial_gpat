@@ -60,7 +60,7 @@ HOP_LENGTH   = 240
 N_TRACKS     = 3
 N_CLASSES    = 13
 VAL_FRACTION = 0.2
-VAL_SEED     = 42
+VAL_SEED     = 2
 WINDOW_S     = 10.0
 HOP_S        = 2.5
 FRAME_DUR    = 0.1   # seconds per annotation frame (100 ms)
@@ -475,7 +475,7 @@ def main() -> None:
         val_fraction = VAL_FRACTION,
         val_seed     = VAL_SEED,
         augment      = None,
-        balance_seed = 42,
+        balance_seed = 2,
     )
 
     print('Building BalancedSTARSS23Dataset (full-clip) …')
