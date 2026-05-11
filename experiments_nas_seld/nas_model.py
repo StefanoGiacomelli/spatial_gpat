@@ -241,11 +241,14 @@ def _build_spatial_late(
         n_tracks = cfg.get('n_tracks', 5)
         # n_layers controls internal TransformerEncoder depth (not outer stacking).
         modules.append(TrackTransformer(
-            d_model   = d_model,
-            n_heads   = n_heads,
-            n_tracks  = n_tracks,
-            num_layers= n_layers,
-            d_input   = in_channels,   # freq axis already averaged before forward
+            d_model         = d_model,
+            n_heads         = n_heads,
+            n_tracks        = n_tracks,
+            num_layers      = n_layers,
+            d_input         = in_channels,   # freq axis already averaged before forward
+            dim_feedforward = cfg.get('ffn_expansion', 4) * d_model,
+            pe_enable       = cfg.get('pe_enable', False),
+            pe_max_len      = cfg.get('pe_max_len', 2048),
         ))
         return modules, n_tracks * d_model, True
 
@@ -282,6 +285,7 @@ def _build_track_smoother(
                 hidden_size = hidden,
                 num_layers  = n_layers,
                 dropout     = cfg.get('dropout', 0.0),
+                merge_mode  = cfg.get('merge_mode', 'mul'),
             ),
             hidden,
         )

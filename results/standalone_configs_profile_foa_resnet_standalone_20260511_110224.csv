@@ -1,0 +1,5 @@
+config_group,config_name,input_type,spatial_early,early_layers,spatial_late,late_layers,smoother,smooth_layers,total_params,trainable_params,memory_mb,gflops,t_ms,out_act_shape,out_doa_shape,status
+foa_resnet_standalone,resnet_starss23,spectral,resnet_block,2,track_transformer,2,bigru,1,4250080,4250080,18.28,303.046,675.0,"(1, 1001, 3, 13)","(1, 1001, 3, 13, 3)",OK
+foa_resnet_standalone,resnet_starss23_cs,spectral,resnet_block,2,track_transformer,2,bigru,1,4252128,4252128,18.29,303.046,676.2,"(1, 1001, 3, 13)","(1, 1001, 3, 13, 3)",OK
+foa_resnet_standalone,resnet_starss23_cse,spectral,resnet_block,2,track_transformer,2,bigru,1,4250592,4250592,18.29,303.046,700.2,"(1, 1001, 3, 13)","(1, 1001, 3, 13, 3)",OK
+foa_resnet_standalone,resnet_starss23_csl,spectral,resnet_block,2,track_transformer,2,bigru,1,4251616,4251616,18.29,303.046,684.1,"(1, 1001, 3, 13)","(1, 1001, 3, 13, 3)",OK

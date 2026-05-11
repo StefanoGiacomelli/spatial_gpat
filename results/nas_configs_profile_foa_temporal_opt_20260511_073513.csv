@@ -1,0 +1,3 @@
+config_group,config_name,input_type,spatial_early,early_layers,spatial_late,late_layers,smoother,smooth_layers,total_params,trainable_params,memory_mb,gflops,t_ms,out_act_shape,out_doa_shape,out_semantic_shape,status
+foa_temporal_opt,exp_topt_BiGRU_n2_h512_merge_sum,spectral,resnet_block,3,track_transformer,1,bigru,2,35950432,34866976,137.21,256.334,533.4,"(1, 1001, 3, 13)","(1, 1001, 3, 13, 3)","(1, 31, 13)",OK
+foa_temporal_opt,exp_topt_TT_n1_ffn8_pe_4tracks,spectral,resnet_block,3,track_transformer,1,bigru,1,32068884,30985428,123.40,253.346,461.3,"(1, 1001, 4, 13)","(1, 1001, 4, 13, 3)","(1, 31, 13)",OK

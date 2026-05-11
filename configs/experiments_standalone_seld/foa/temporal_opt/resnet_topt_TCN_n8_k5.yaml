@@ -1,0 +1,96 @@
+# Standalone SELD temporal-opt: Switch smoother from BiGRU to TCN (ResNet pipeline)
+# Base: resnet_starss23_specaug_focal.yaml
+# Target module: track_smoothing (replaces BiGRU with TCN)
+# Changes vs base:
+#   track_smoothing.type:        tcn   (was bigru — fully parallelizable, explicit RF)
+#   track_smoothing.d_model:     128   (was hidden_size=256; TCN uses d_model=TT d_model)
+#   track_smoothing.n_layers:    8     (RF = 5×(2⁸−1)=1275 frames ≈ 12.75 s)
+#   track_smoothing.kernel_size: 5
+#   track_smoothing.global_skip: false (can be set true independently for gradient flow)
+# RF formula: k × (2^n − 1) = 5 × 255 = 1275 frames ≈ 12.75 s
+# This is an architectural comparison: BiGRU (recurrent, implicit horizon)
+# vs TCN (explicit full-window RF, fully parallelizable, smaller parameter count).
+
+experiment:
+  name: resnet_topt_TCN_n8_k5
+  seed: 42
+
+input:
+  type:        spectral
+  sr:          24000
+  n_mics:      4
+  n_fft:       1024
+  hop_length:  240
+  compute_iv:  true
+
+spatial_early:
+  type:           resnet_block
+  n_layers:       2
+  out_channels:   64
+  d_model:        128
+  use_msca:       true
+  msca_reduction: 4
+  dropout:        0.1
+
+spatial_late:
+  type:     track_transformer
+  n_layers: 2
+  d_model:  128
+  n_heads:  4
+  n_tracks: 3
+  dropout:  0.1
+
+track_smoothing:
+  type:        tcn              # was bigru — switch to dilated TCN for explicit RF
+  d_model:     128             # must match spatial_late.d_model (TCN is d_model in/out)
+  n_layers:    8               # RF: 5×(2⁸−1)=1275 frames ≈ 12.75 s (full 10 s window coverage)
+  kernel_size: 5               # wider kernel at each dilation level
+  dropout:     0.1
+  global_skip: false
+
+heads:
+  n_tracks:  3
+  n_classes: 13
+  proj_dim:  null
+
+cross_stitch:
+  cs_early_enabled: false
+  cs_late_enabled:  false
+
+training:
+  dataset_mode:     STARSS23
+  epochs:           50
+  batch_size:       2
+  patience:         30
+  beta_sed:         0.8
+  focal_gamma:      2.0
+  pos_weight_max:   20.0
+  angle_thresh:     20.0
+  lr:               3.0e-4
+  scheduler:        reduce_on_plateau
+  lr_reduce_factor: 0.75
+  lr_patience:      5
+  lr_min:           1.0e-5
+
+augmentation:
+  enabled:      true
+  p_16patterns: 0.50
+  p_gain:       0.20
+  p_noise:      0.20
+  gain_min:     0.3
+  gain_max:     0.9
+  noise_snr_db: 35.0
+  spec_augment:
+    enabled:         true
+    n_freq_masks:    2
+    freq_mask_param: 20
+    n_time_masks:    2
+    time_mask_param: 30
+
+data:
+  root_path:    data/STARSS23
+  window_s:     10.0
+  hop_s:        2.5
+  val_fraction: 0.2
+  val_seed:     42
+  num_workers:  4

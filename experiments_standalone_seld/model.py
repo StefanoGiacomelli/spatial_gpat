@@ -265,14 +265,15 @@ def _build_spatial_late(
     d_model  = cfg.get('d_model', 128)
     n_tracks = cfg.get('n_tracks', 2)
     module   = TrackTransformer(
-        d_model    = d_model,
-        n_heads    = cfg.get('n_heads', 4),
-        n_tracks   = n_tracks,
-        num_layers = cfg.get('n_layers', 2),
-        d_input    = d_in,
-        dropout    = cfg.get('dropout', 0.0),
-        pe_enable  = True,
-        pe_max_len = cfg.get('pe_max_len', 2048),
+        d_model         = d_model,
+        n_heads         = cfg.get('n_heads', 4),
+        n_tracks        = n_tracks,
+        num_layers      = cfg.get('n_layers', 2),
+        d_input         = d_in,
+        dropout         = cfg.get('dropout', 0.0),
+        pe_enable       = True,
+        pe_max_len      = cfg.get('pe_max_len', 2048),
+        dim_feedforward = cfg.get('ffn_expansion', 4) * d_model,
     )
     return module, n_tracks, d_model
 
@@ -290,11 +291,16 @@ def _build_track_smoother(
 
     if typ == 'tcn':
         tcn_d  = cfg.get('d_model', d_model)   # default: same as TT d_model
+        assert tcn_d == d_model, (
+            f'[StandaloneSELD] track_smoothing.d_model ({tcn_d}) must equal '
+            f'spatial_late.d_model ({d_model}) — TCN input dim is fixed by TT output.'
+        )
         module = TCN(
             d_model     = tcn_d,
             n_layers    = cfg.get('n_layers', 6),
             kernel_size = cfg.get('kernel_size', 3),
             dropout     = cfg.get('dropout', 0.0),
+            global_skip = cfg.get('global_skip', False),
         )
         return module, module.out_dim
 
@@ -305,6 +311,7 @@ def _build_track_smoother(
             hidden_size = hidden,
             num_layers  = cfg.get('n_layers', 1),
             dropout     = cfg.get('dropout', 0.0),
+            merge_mode  = cfg.get('merge_mode', 'mul'),
         )
         return module, hidden
 

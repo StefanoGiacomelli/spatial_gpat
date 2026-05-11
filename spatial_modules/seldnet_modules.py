@@ -264,10 +264,12 @@ class BiGRU(nn.Module):
                  in_size:  int,
                  hidden_size: int   = 128,
                  num_layers:  int   = 2,
-                 dropout:     float = 0.0):
+                 dropout:     float = 0.0,
+                 merge_mode:  str   = 'mul'):
         super().__init__()
         self.hidden_size = hidden_size
         self.num_layers  = num_layers
+        self.merge_mode  = merge_mode
 
         self.fwd_layers = nn.ModuleList()
         self.bwd_layers = nn.ModuleList()
@@ -296,7 +298,10 @@ class BiGRU(nn.Module):
             fwd_out, _  = fwd(x)               # (B, T, H)  — forward pass
             bwd_out, _  = bwd(x.flip(1))       # backward: feed reversed sequence
             bwd_out     = bwd_out.flip(1)      # re-align outputs to original order
-            x           = fwd_out * bwd_out    # merge_mode = 'mul'
+            if self.merge_mode == 'sum':
+                x = fwd_out + bwd_out
+            else:
+                x = fwd_out * bwd_out          # merge_mode = 'mul' (default)
             if i < self.num_layers - 1 or self.num_layers == 1:
                 x = self.dropout(x)
         return x

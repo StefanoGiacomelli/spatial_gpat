@@ -1,0 +1,6 @@
+config_group,config_name,input_type,spatial_early,early_layers,spatial_late,late_layers,smoother,smooth_layers,total_params,trainable_params,memory_mb,gflops,t_ms,out_act_shape,out_doa_shape,status
+foa_preliminary_conformer,conformer_starss23,spectral,conformer,4,track_transformer,2,tcn,6,6259424,6259424,25.96,86.657,513.9,"(1, 1001, 3, 13)","(1, 1001, 3, 13, 3)",OK
+foa_preliminary_conformer,conformer_starss23_cs,spectral,conformer,4,track_transformer,2,tcn,6,6261472,6261472,25.96,86.657,499.2,"(1, 1001, 3, 13)","(1, 1001, 3, 13, 3)",OK
+foa_preliminary_conformer,conformer_starss23_cse,spectral,conformer,4,track_transformer,2,tcn,6,6259936,6259936,25.96,86.657,496.2,"(1, 1001, 3, 13)","(1, 1001, 3, 13, 3)",OK
+foa_preliminary_conformer,conformer_starss23_csl,spectral,conformer,4,track_transformer,2,tcn,6,6260960,6260960,25.96,86.657,497.1,"(1, 1001, 3, 13)","(1, 1001, 3, 13, 3)",OK
+foa_preliminary_conformer,conformer_starss23_tpit,spectral,conformer,4,track_transformer,2,tcn,6,6259424,6259424,25.96,86.657,494.6,"(1, 1001, 3, 13)","(1, 1001, 3, 13, 3)",OK

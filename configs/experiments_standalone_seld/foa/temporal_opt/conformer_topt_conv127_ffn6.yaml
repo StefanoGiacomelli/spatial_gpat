@@ -1,0 +1,90 @@
+# Standalone SELD temporal-opt: Conformer early-stage improvements
+# Base: conformer_starss23_cs_specaug_focal.yaml
+# Target module: spatial_early (ConformerBlock stack)
+# Changes vs base:
+#   spatial_early.conv_kernel:   127  (was 31; local temporal inductive bias 310 ms → 1270 ms)
+#   spatial_early.ffn_expansion: 6    (was 4; shared backbone FFN dim 512 → 768)
+
+experiment:
+  name: conformer_topt_conv127_ffn6
+  seed: 42
+
+input:
+  type:        spectral
+  sr:          24000
+  n_mics:      4
+  n_fft:       1024
+  hop_length:  240
+  compute_iv:  true
+
+spatial_early:
+  type:           conformer
+  use_msca:       true
+  msca_reduction: 4
+  d_model:        128
+  n_conf_layers:  4
+  n_heads:        4
+  ffn_expansion:  6      # was 4 — Conformer FFN dim 512 → 768 per block
+  conv_kernel:    127    # was 31 — depthwise conv span 310 ms → 1270 ms per block
+  dropout:        0.1
+
+spatial_late:
+  type:     track_transformer
+  n_layers: 2
+  d_model:  128
+  n_heads:  4
+  n_tracks: 3
+  dropout:  0.1
+
+track_smoothing:
+  type:        tcn
+  d_model:     128
+  n_layers:    6
+  kernel_size: 3
+  dropout:     0.1
+
+heads:
+  n_tracks:  3
+  n_classes: 13
+  proj_dim:  null
+
+cross_stitch:
+  cs_early_enabled: true
+  cs_late_enabled:  true
+
+training:
+  dataset_mode:     STARSS23
+  epochs:           50
+  batch_size:       8
+  patience:         30
+  beta_sed:         0.8
+  focal_gamma:      2.0
+  pos_weight_max:   20.0
+  angle_thresh:     20.0
+  lr:               3.0e-4
+  scheduler:        cosine
+  lr_warmup_epochs: 5
+  lr_min:           1.0e-5
+
+augmentation:
+  enabled:      true
+  p_16patterns: 0.50
+  p_gain:       0.20
+  p_noise:      0.20
+  gain_min:     0.3
+  gain_max:     0.9
+  noise_snr_db: 35.0
+  spec_augment:
+    enabled:         true
+    n_freq_masks:    2
+    freq_mask_param: 20
+    n_time_masks:    2
+    time_mask_param: 30
+
+data:
+  root_path:    data/STARSS23
+  window_s:     10.0
+  hop_s:        2.5
+  val_fraction: 0.2
+  val_seed:     42
+  num_workers:  4

@@ -61,7 +61,7 @@ DEVICE      = 'cpu'    # change to 'mps' or 'cuda' as needed
 N_WARMUP    = 2        # warm-up forward passes (not timed)
 BATCH_SIZE  = 1
 SR          = 24000    # STARSS23 native SR; NASModel resamples to 32 kHz
-DURATION_S  = 30.0
+DURATION_S  = 10.0
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 REPO_ROOT       = Path(__file__).resolve().parent.parent.parent
@@ -203,9 +203,15 @@ def run(configs_dir: Path) -> None:
                 row['trainable_params'] = trainable
                 row['memory_mb']        = f'{mem_mb:.2f}'
 
-                # ── Dummy input ───────────────────────────────────────────
-                n_samples = int(SR * DURATION_S)
+                # ── Dummy input — duration from config, fallback to DURATION_S ──
+                window_s = (
+                    cfg.get('data', {}).get('window_s')
+                    or cfg.get('training', {}).get('window_s')
+                    or DURATION_S
+                )
+                n_samples = int(SR * window_s)
                 x = torch.randn(BATCH_SIZE, 4, n_samples, device=DEVICE)
+                print(f"  Window : {window_s:.1f} s  →  {n_samples} samples @ {SR} Hz")
 
                 # ── GFLOPs (before warm-up to avoid caching bias) ─────────
                 with torch.no_grad():

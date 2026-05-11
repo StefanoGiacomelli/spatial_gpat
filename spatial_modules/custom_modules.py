@@ -75,16 +75,19 @@ class TCN(nn.Module):
         n_layers:    int,
         kernel_size: int   = 3,
         dropout:     float = 0.0,
+        global_skip: bool  = False,
     ):
         super().__init__()
         self.blocks = nn.ModuleList([
             TCNBlock(d_model, kernel_size, dilation=2 ** i, dropout=dropout)
             for i in range(n_layers)
         ])
+        self.global_skip = global_skip
         self.out_dim = d_model
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: (B, T, d_model)
+        x_in = x
         for blk in self.blocks:
             x = blk(x)
-        return x   # (B, T, d_model)
+        return x + x_in if self.global_skip else x   # (B, T, d_model)

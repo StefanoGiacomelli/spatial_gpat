@@ -184,6 +184,12 @@ class StandaloneSELDModule(L.LightningModule):
         doa_tanh   = doa_tanh[:, :T]
         tgt        = tgt[:, :T]
 
+        stride = int(self.hparams['cfg'].get('training', {}).get('gt_stride', 1))
+        if stride > 1:
+            act_logits = act_logits[:, ::stride]
+            doa_tanh   = doa_tanh[:, ::stride]
+            tgt        = tgt[:, ::stride]
+
         loss, loss_sed, loss_doa = self.tpit_loss(act_logits, doa_tanh, tgt)
 
         self.log('train/loss',     loss,     on_step=True,  on_epoch=True,

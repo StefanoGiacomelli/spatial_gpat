@@ -1,0 +1,9 @@
+config_group,config_name,input_type,spatial_early,early_layers,spatial_late,late_layers,smoother,smooth_layers,total_params,trainable_params,memory_mb,gflops,t_ms,out_act_shape,out_doa_shape,status
+foa_temporal_opt,conformer_topt_TCN_n8_k5_globskip,spectral,conformer,4,track_transformer,2,tcn,8,6333664,6333664,26.24,86.871,581.9,"(1, 1001, 3, 13)","(1, 1001, 3, 13, 3)",OK
+foa_temporal_opt,conformer_topt_TT_ffn6_n_tracks4,spectral,conformer,4,track_transformer,2,tcn,6,8107744,8107744,33.01,88.442,564.1,"(1, 1001, 4, 13)","(1, 1001, 4, 13, 3)",OK
+foa_temporal_opt,conformer_topt_conv127_ffn6,spectral,conformer,4,track_transformer,2,tcn,6,7412448,7412448,30.36,86.757,503.6,"(1, 1001, 3, 13)","(1, 1001, 3, 13, 3)",OK
+foa_temporal_opt,conformer_topt_gt_stride10,spectral,conformer,4,track_transformer,2,tcn,6,6261472,6261472,25.96,86.657,503.0,"(1, 1001, 3, 13)","(1, 1001, 3, 13, 3)",OK
+foa_temporal_opt,resnet_topt_GRU_n2_h512_merge_sum,spectral,resnet_block,2,track_transformer,2,bigru,2,13325792,13325792,52.90,330.260,1220.4,"(1, 1001, 3, 13)","(1, 1001, 3, 13, 3)",OK
+foa_temporal_opt,resnet_topt_TCN_n8_k5,spectral,resnet_block,2,track_transformer,2,tcn,8,3334112,3334112,14.79,300.303,860.7,"(1, 1001, 3, 13)","(1, 1001, 3, 13, 3)",OK
+foa_temporal_opt,resnet_topt_TT_ffn6_n3_n_tracks4,spectral,resnet_block,2,track_transformer,3,bigru,1,8208352,8208352,33.38,307.402,731.1,"(1, 1001, 4, 13)","(1, 1001, 4, 13, 3)",OK
+foa_temporal_opt,resnet_topt_gt_stride10,spectral,resnet_block,2,track_transformer,2,bigru,1,4250080,4250080,18.28,303.046,675.8,"(1, 1001, 3, 13)","(1, 1001, 3, 13, 3)",OK
