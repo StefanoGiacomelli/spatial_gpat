@@ -77,7 +77,7 @@ augmentation:
 
 training:
   epochs:           100
-  batch_size:       4
+  batch_size:       2
   patience:         30
 
   lambda_spatial:   0.9

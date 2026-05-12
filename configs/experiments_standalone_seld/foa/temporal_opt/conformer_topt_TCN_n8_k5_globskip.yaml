@@ -53,14 +53,14 @@ heads:
 
 cross_stitch:
   cs_early_enabled: true
-  cs_late_enabled:  true
+  cs_late_enabled:  false
 
 training:
   dataset_mode:     STARSS23
-  epochs:           50
-  batch_size:       8
+  epochs:           100
+  batch_size:       2
   patience:         30
-  beta_sed:         0.8
+  beta_sed:         0.9
   focal_gamma:      2.0
   pos_weight_max:   20.0
   angle_thresh:     20.0
