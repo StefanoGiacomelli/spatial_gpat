@@ -1,0 +1,90 @@
+# Standalone SELD input context extension: ResNet+TT4, 30 s window, TAU-NIGENS2021
+# Architecture: resnet_starss23 + TT upgrades from resnet_topt_TT_ffn6_n3_n_tracks4
+#   spatial_late.n_layers:      3  (was 2 — deeper track-level refinement)
+#   spatial_late.ffn_expansion: 6  (was implicit 4 — TT FFN dim 512 → 768)
+#   spatial_late.n_tracks:      4  (was 3 — extra track for assignment stability)
+#   heads.n_tracks:             4  (must match)
+# Extends input window from 10 s to 30 s (hop 2.0 s).
+
+experiment:
+  name: resnet_ictx_tt4_taunigens_w30
+  seed: 42
+
+input:
+  type:        spectral
+  sr:          24000
+  n_mics:      4
+  n_fft:       1024
+  hop_length:  240
+  compute_iv:  true
+
+spatial_early:
+  type:           resnet_block
+  n_layers:       2
+  out_channels:   64
+  d_model:        128
+  use_msca:       true
+  msca_reduction: 4
+  dropout:        0.1
+
+spatial_late:
+  type:          track_transformer
+  n_layers:      3             # was 2 — third TT layer adds another self-attention pass per track
+  d_model:       128
+  n_heads:       4
+  n_tracks:      4             # was 3 — extra track for assignment stability
+  ffn_expansion: 6             # was implicit 4 — TT FFN dim 512 → 768 per layer
+  dropout:       0.1
+
+track_smoothing:
+  type:        bigru
+  hidden_size: 256
+  n_layers:    1
+  dropout:     0.1
+
+heads:
+  n_tracks:  4                 # must match spatial_late.n_tracks
+  n_classes: 12
+  proj_dim:  null
+
+cross_stitch:
+  cs_early_enabled: false
+  cs_late_enabled:  false
+
+training:
+  dataset_mode:     TAU-NIGENS2021
+  epochs:           100
+  batch_size:       1       # effective_batch=16 via accumulate_grad_batches=16
+  patience:         30
+  beta_sed:         0.9
+  focal_gamma:      2.0
+  pos_weight_max:   20.0
+  angle_thresh:     20.0
+  lr:               3.0e-4
+  scheduler:        reduce_on_plateau
+  lr_reduce_factor: 0.75
+  lr_patience:      5
+  lr_min:           1.0e-5
+
+augmentation:
+  enabled:      true
+  p_16patterns: 0.50
+  p_gain:       0.20
+  p_noise:      0.20
+  gain_min:     0.3
+  gain_max:     0.9
+  noise_snr_db: 35.0
+  spec_augment:
+    enabled:         false
+    n_freq_masks:    2
+    freq_mask_param: 20
+    n_time_masks:    2
+    time_mask_param: 30
+
+data:
+  root_path:    data/TAU-NIGENS2021
+  window_s:     30.0
+  hop_s:        2.0
+  val_fraction: 0.2     # ignored — TAU-NIGENS2021 uses fixed dev split
+  val_seed:     42
+  num_workers:  4

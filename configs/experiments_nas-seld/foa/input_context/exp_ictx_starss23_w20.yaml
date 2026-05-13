@@ -1,0 +1,94 @@
+# NAS-SELD input context extension: 20 s window, STARSS23
+# Architecture: exp_ft_tau2019_focal (resnet_block×3 + TT×1) + BiGRU upgrades from exp_topt_BiGRU_n2_h512_merge_sum
+# Extends input window from 10 s to 20 s (hop 2.0 s) to study whether richer temporal context improves SELD.
+# Runner: main_nas-seld.py --dataset STARSS23
+
+experiment:
+  name: exp_ictx_starss23_w20
+  seed: 42
+
+input:
+  type: spectral
+  sr: 32000
+  n_mics: 4
+  hop_length: 320
+  n_fft: 512
+
+semantic:
+  dataset:    STARSS23
+  checkpoint: semantic_backbone/epanns/checkpoint_closeto_.44.pt
+  early_group: {init: pretrained, frozen: false}
+  late_group:  {init: pretrained, frozen: false}
+  head_group:  {init: pretrained, frozen: false}
+
+cross_stitch:
+  cs_early_enabled: false
+  cs_late_enabled:  true
+  C_bridge_early: 64
+  C_bridge_late: 128
+
+spatial_early:
+  type: resnet_block
+  n_layers: 3
+  out_channels: 64
+  use_msca: true
+  msca_reduction: 4
+  stride: [1, 1]
+  dropout: 0.1
+
+spatial_late:
+  type: track_transformer
+  n_layers: 1
+  d_model: 128
+  n_heads: 4
+  n_tracks: 3
+  dropout: 0.1
+
+track_smoothing_spatial:
+  type: bigru
+  n_layers: 2          # was 1 — hierarchical temporal depth
+  hidden_size: 512     # was 256 — doubles working memory over T≈2000
+  merge_mode: sum      # was implicit 'mul' — additive merge
+  dropout: 0.1
+
+heads:
+  n_tracks:  3
+  n_classes: 13
+
+data:
+  format:       foa
+  window_s:     20.0
+  hop_s:        2.0
+  val_fraction: 0.2
+  val_seed:     42
+  num_workers:  4
+
+augmentation:
+  enabled:      true
+  p_16patterns: 0.50
+  p_gain:       0.20
+  p_noise:      0.20
+  gain_min:     0.3
+  gain_max:     0.9
+  noise_snr_db: 35.0
+
+training:
+  epochs:           100
+  batch_size:       1       # effective_batch=16 via accumulate_grad_batches=16
+  patience:         30
+
+  lambda_spatial:   0.9
+  lambda_semantic:  0.1
+  beta_sed:         0.9
+  focal_gamma:      2.0
+  angle_thresh:     20.0
+
+  pos_weight_max:   20.0
+
+  lr:               5.0e-4
+  lr_reduce_factor: 0.75
+  lr_patience:      10
+  lr_min:           1.0e-5
+
+  window_s:         20.0
+  hop_s:            2.0
