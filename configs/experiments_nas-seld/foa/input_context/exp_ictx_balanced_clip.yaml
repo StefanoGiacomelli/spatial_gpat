@@ -1,10 +1,13 @@
-# NAS-SELD input context extension: 30 s window, TAU-NIGENS2021
+# NAS-SELD input context extension: full-clip mode, BalancedSTARSS23
 # Architecture: exp_ft_tau2019_focal (resnet_block×3 + TT×1) + BiGRU upgrades from exp_topt_BiGRU_n2_h512_merge_sum
-# Extends input window from 10 s to 30 s (hop 2.0 s) to study whether richer temporal context improves SELD.
-# Runner: main_nas-seld.py --dataset TAU-NIGENS2021
+# Full-clip mode: data.window_s is null → runner uses variable-length clips with collate_fn padding.
+# STARSS23 train clips: 32.5 s – 388.6 s (mean 162 s); TAU-NIGENS: 60 s; TAU2019: ~60 s.
+# collate_fn pads each batch to the longest item; with batch_size=1 no padding occurs.
+# Runner: main_nas-seld.py --dataset BalancedSTARSS23
+# Note: --window-s / --hop-s omit from CLI (runner reads data.window_s=null from YAML → full-clip).
 
 experiment:
-  name: exp_ictx_taunigens_w30
+  name: exp_ictx_balanced_clip
   seed: 42
 
 input:
@@ -15,7 +18,7 @@ input:
   n_fft: 512
 
 semantic:
-  dataset:    TAU-NIGENS2021
+  dataset:    BalancedSTARSS23
   checkpoint: semantic_backbone/epanns/checkpoint_closeto_.44.pt
   early_group: {init: pretrained, frozen: false}
   late_group:  {init: pretrained, frozen: false}
@@ -47,19 +50,19 @@ spatial_late:
 track_smoothing_spatial:
   type: bigru
   n_layers: 2          # was 1 — hierarchical temporal depth
-  hidden_size: 512     # was 256 — doubles working memory over T≈3000
+  hidden_size: 512     # was 256 — larger working memory for long clips (up to ~39k frames)
   merge_mode: sum      # was implicit 'mul' — additive merge
   dropout: 0.1
 
 heads:
   n_tracks:  3
-  n_classes: 12
+  n_classes: 13
 
 data:
   format:       foa
-  window_s:     30.0
-  hop_s:        2.0
-  val_fraction: 0.2     # ignored — TAU-NIGENS2021 uses fixed dev split
+  window_s:     null    # full-clip mode — runner reads null → windowed=False
+  hop_s:        null    # unused in full-clip mode
+  val_fraction: 0.2
   val_seed:     42
   num_workers:  4
 
@@ -89,6 +92,3 @@ training:
   lr_reduce_factor: 0.75
   lr_patience:      10
   lr_min:           1.0e-5
-
-  window_s:         30.0
-  hop_s:            2.0

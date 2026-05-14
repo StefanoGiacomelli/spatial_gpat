@@ -1,9 +1,12 @@
-# Standalone SELD input context extension: ResNet base, 20 s window, STARSS23
+# Standalone SELD input context extension: ResNet base, full-clip mode, BalancedSTARSS23
 # Architecture: resnet_starss23 (resnet_block×2 + TT×2 + BiGRU×1, cs_early=false, cs_late=false)
-# Extends input window from 10 s to 20 s (hop 2.0 s) to study whether richer temporal context improves SELD.
+# Dataset: BalancedSTARSS23 — full-clip mode (window_s=null → windowed=False)
+# STARSS23 training clips: 32.5–388.6 s; TAU-NIGENS: 60 s; TAU2019: ~60 s
+# collate_fn pads each batch to the longest item; with batch_size=1 no padding occurs
+# Data paths injected by runner (--starss-root / --tau-root / --tau2019-root)
 
 experiment:
-  name: resnet_ictx_base_starss23_w20
+  name: resnet_ictx_base_balanced_clip
   seed: 42
 
 input:
@@ -47,9 +50,9 @@ cross_stitch:
   cs_late_enabled:  false
 
 training:
-  dataset_mode:     STARSS23
+  dataset_mode:     BalancedSTARSS23
   epochs:           100
-  batch_size:       1       # effective_batch=16 via accumulate_grad_batches=16
+  batch_size:       1       # effective_batch=32 via accumulate_grad_batches=32
   patience:         30
   beta_sed:         0.9
   focal_gamma:      2.0
@@ -77,9 +80,8 @@ augmentation:
     time_mask_param: 30
 
 data:
-  root_path:    data/STARSS23
-  window_s:     20.0
-  hop_s:        2.0
+  window_s:     null    # full-clip mode — runner reads null → windowed=False
+  hop_s:        null    # unused in full-clip mode
   val_fraction: 0.2
   val_seed:     42
   num_workers:  4

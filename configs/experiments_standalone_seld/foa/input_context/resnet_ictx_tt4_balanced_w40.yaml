@@ -1,13 +1,15 @@
-# Standalone SELD input context extension: ResNet+TT4, 20 s window, TAU-NIGENS2021
+# Standalone SELD input context extension: ResNet+TT4, 40 s window, BalancedSTARSS23
 # Architecture: resnet_starss23 + TT upgrades from resnet_topt_TT_ffn6_n3_n_tracks4
 #   spatial_late.n_layers:      3  (was 2 — deeper track-level refinement)
 #   spatial_late.ffn_expansion: 6  (was implicit 4 — TT FFN dim 512 → 768)
 #   spatial_late.n_tracks:      4  (was 3 — extra track for assignment stability)
 #   heads.n_tracks:             4  (must match)
-# Extends input window from 10 s to 20 s (hop 2.0 s).
+# Dataset: BalancedSTARSS23 (STARSS23 + TAU-NIGENS2021 + TAU2019, 13-class greedy balancing + FOA mixup)
+# Window: 40 s / hop 2 s — data paths injected by runner (--starss-root / --tau-root / --tau2019-root)
+# _expand_to_windows: 50% threshold (start + ws//2 <= n) — includes clips >= 20 s real audio
 
 experiment:
-  name: resnet_ictx_tt4_taunigens_w20
+  name: resnet_ictx_tt4_balanced_w40
   seed: 42
 
 input:
@@ -44,7 +46,7 @@ track_smoothing:
 
 heads:
   n_tracks:  4                 # must match spatial_late.n_tracks
-  n_classes: 12
+  n_classes: 13
   proj_dim:  null
 
 cross_stitch:
@@ -52,9 +54,9 @@ cross_stitch:
   cs_late_enabled:  false
 
 training:
-  dataset_mode:     TAU-NIGENS2021
+  dataset_mode:     BalancedSTARSS23
   epochs:           100
-  batch_size:       1       # effective_batch=16 via accumulate_grad_batches=16
+  batch_size:       2       # effective_batch=32 via accumulate_grad_batches=16
   patience:         30
   beta_sed:         0.9
   focal_gamma:      2.0
@@ -82,9 +84,8 @@ augmentation:
     time_mask_param: 30
 
 data:
-  root_path:    data/TAU-NIGENS2021
-  window_s:     20.0
+  window_s:     40.0
   hop_s:        2.0
-  val_fraction: 0.2     # ignored — TAU-NIGENS2021 uses fixed dev split
+  val_fraction: 0.2
   val_seed:     42
   num_workers:  4

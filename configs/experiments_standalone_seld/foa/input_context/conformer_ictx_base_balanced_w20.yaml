@@ -1,9 +1,10 @@
-# Standalone SELD input context extension: Conformer base, 20 s window, TAU-NIGENS2021
+# Standalone SELD input context extension: Conformer base, 20 s window, BalancedSTARSS23
 # Architecture: conformer_starss23_cse (conformer×4 + TT×2 + TCN×6, cs_early=true)
-# Extends input window from 10 s to 20 s (hop 2.0 s) to study whether richer temporal context improves SELD.
+# Dataset: BalancedSTARSS23 (STARSS23 + TAU-NIGENS2021 + TAU2019, 13-class greedy balancing + FOA mixup)
+# Window: 20 s / hop 2 s — data paths injected by runner (--starss-root / --tau-root / --tau2019-root)
 
 experiment:
-  name: conformer_ictx_base_taunigens_w20
+  name: conformer_ictx_base_balanced_w20
   seed: 42
 
 input:
@@ -42,7 +43,7 @@ track_smoothing:
 
 heads:
   n_tracks:  3
-  n_classes: 12
+  n_classes: 13
   proj_dim:  null
 
 cross_stitch:
@@ -50,9 +51,9 @@ cross_stitch:
   cs_late_enabled:  false
 
 training:
-  dataset_mode:     TAU-NIGENS2021
+  dataset_mode:     BalancedSTARSS23
   epochs:           100
-  batch_size:       1       # effective_batch=16 via accumulate_grad_batches=16
+  batch_size:       2       # effective_batch=32 via accumulate_grad_batches=16
   patience:         30
   beta_sed:         0.9
   focal_gamma:      0.0
@@ -74,9 +75,8 @@ augmentation:
   noise_snr_db: 35.0
 
 data:
-  root_path:    data/TAU-NIGENS2021
   window_s:     20.0
   hop_s:        2.0
-  val_fraction: 0.2     # ignored — TAU-NIGENS2021 uses fixed dev split
+  val_fraction: 0.2
   val_seed:     42
   num_workers:  4

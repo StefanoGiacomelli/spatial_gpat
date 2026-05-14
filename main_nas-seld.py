@@ -189,10 +189,14 @@ def _parse_args():
                    help='EarlyStopping patience in epochs (0 = disabled). If omitted, reads from YAML training.patience.')
     p.add_argument('--limit-batches', type=int,  default=0,
                    help='Limit train/val/test batches per epoch (0 = disabled).')
-    p.add_argument('--window-s',     type=float, default=_DEFAULT_WINDOW_S,
-                   help='Window duration in seconds (0 = full-clip mode).')
-    p.add_argument('--hop-s',        type=float, default=_DEFAULT_HOP_S,
-                   help='Window hop in seconds.')
+    p.add_argument('--window-s',     type=float, default=None,
+                   help='Window duration in seconds (0 = full-clip mode). '
+                        'If omitted, reads from YAML data.window_s; '
+                        f'falls back to {_DEFAULT_WINDOW_S} if absent.')
+    p.add_argument('--hop-s',        type=float, default=None,
+                   help='Window hop in seconds. '
+                        'If omitted, reads from YAML data.hop_s; '
+                        f'falls back to {_DEFAULT_HOP_S} if absent.')
     p.add_argument('--num-workers',  type=int,   default=_DEFAULT_NUM_WORKERS,
                    help='DataLoader worker processes.')
     p.add_argument('--accum-steps',  type=int,   default=0,
@@ -321,8 +325,19 @@ def _build_cfg(exp_yaml_path: Path, args) -> dict:
     cfg['training'] = base_training
 
     # 5. Data runtime params
-    window_s = args.window_s if args.window_s > 0 else None
-    hop_s    = args.hop_s    if args.hop_s    > 0 else None
+    # Priority: explicit CLI > YAML data.window_s > runner default (_DEFAULT_WINDOW_S).
+    # Passing --window-s 0 (or leaving it absent when YAML has null) → full-clip mode.
+    if args.window_s is not None:
+        window_s = args.window_s if args.window_s > 0 else None
+    else:
+        _yaml_ws = cfg.get('data', {}).get('window_s', _DEFAULT_WINDOW_S)
+        window_s = _yaml_ws if (_yaml_ws is not None and float(_yaml_ws) > 0) else None
+
+    if args.hop_s is not None:
+        hop_s = args.hop_s if args.hop_s > 0 else None
+    else:
+        _yaml_hs = cfg.get('data', {}).get('hop_s', _DEFAULT_HOP_S)
+        hop_s = _yaml_hs if (_yaml_hs is not None and float(_yaml_hs) > 0) else None
     data_update: dict = {
         'window_s':     window_s,
         'hop_s':        hop_s,

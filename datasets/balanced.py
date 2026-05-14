@@ -504,7 +504,9 @@ class BalancedSTARSS23Dataset(Dataset):
         def _windows(audio_path: Path, ws: int, hs: int):
             n = sf.info(str(audio_path)).frames
             start = 0
-            while start + ws <= n:
+            # Include window if at least 50% of its span contains real audio.
+            # Partial tail is zero-padded by _load_clip_segment.
+            while start + ws // 2 <= n:
                 yield start
                 start += hs
 
@@ -550,7 +552,9 @@ class BalancedSTARSS23Dataset(Dataset):
 
                 n_min = min(n_a, n_b_starss)
                 start = 0
-                while start + ws_s <= n_min:
+                # Same 50% threshold as non-mixup items: include if at least
+                # half the window span has real audio in the shorter clip.
+                while start + ws_s // 2 <= n_min:
                     windowed.append(('mixup', ci_a, ci_b, type_b, start))
                     start += hs_s
 

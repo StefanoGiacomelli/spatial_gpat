@@ -1,12 +1,15 @@
-# Standalone SELD input context extension: Conformer+TT4, 20 s window, STARSS23
+# Standalone SELD input context extension: Conformer+TT4, full-clip mode, TAU-NIGENS2021
 # Architecture: conformer_starss23_cse + TT upgrades from conformer_topt_TT_ffn6_n_tracks4
 #   spatial_late.ffn_expansion: 6  (was implicit 4 — TT FFN dim 512 → 768)
 #   spatial_late.n_tracks:      4  (was 3 — extra track for assignment stability)
 #   heads.n_tracks:             4  (must match)
-# Extends input window from 10 s to 20 s (hop 2.0 s).
+# Dataset: TAU-NIGENS2021 — all clips exactly 60 s → T_mel=6001 frames, no variability in batch
+# collate_fn pads each batch to the longest item; with batch_size=1 no padding occurs
+# Runner: main_standalone_seld.py --config-file <this_file>
+# Note: --window-s / --hop-s omit from CLI (runner reads data.window_s=null → full-clip)
 
 experiment:
-  name: conformer_ictx_tt4_starss23_w20
+  name: conformer_ictx_tt4_taunigens_clip
   seed: 42
 
 input:
@@ -46,7 +49,7 @@ track_smoothing:
 
 heads:
   n_tracks:  4             # must match spatial_late.n_tracks
-  n_classes: 13
+  n_classes: 12
   proj_dim:  null
 
 cross_stitch:
@@ -54,9 +57,9 @@ cross_stitch:
   cs_late_enabled:  false
 
 training:
-  dataset_mode:     STARSS23
+  dataset_mode:     TAU-NIGENS2021
   epochs:           100
-  batch_size:       1       # effective_batch=16 via accumulate_grad_batches=16
+  batch_size:       1       # effective_batch=32 via accumulate_grad_batches=32
   patience:         30
   beta_sed:         0.9
   focal_gamma:      0.0
@@ -78,9 +81,9 @@ augmentation:
   noise_snr_db: 35.0
 
 data:
-  root_path:    data/STARSS23
-  window_s:     20.0
-  hop_s:        2.0
-  val_fraction: 0.2
+  root_path:    data/TAU-NIGENS2021
+  window_s:     null    # full-clip mode — runner reads null → windowed=False
+  hop_s:        null    # unused in full-clip mode
+  val_fraction: 0.2     # ignored — TAU-NIGENS2021 uses fixed dev split
   val_seed:     42
   num_workers:  4

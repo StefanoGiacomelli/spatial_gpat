@@ -1,13 +1,12 @@
-# Standalone SELD input context extension: ResNet+TT4, 30 s window, TAU-NIGENS2021
-# Architecture: resnet_starss23 + TT upgrades from resnet_topt_TT_ffn6_n3_n_tracks4
-#   spatial_late.n_layers:      3  (was 2 — deeper track-level refinement)
-#   spatial_late.ffn_expansion: 6  (was implicit 4 — TT FFN dim 512 → 768)
-#   spatial_late.n_tracks:      4  (was 3 — extra track for assignment stability)
-#   heads.n_tracks:             4  (must match)
-# Extends input window from 10 s to 30 s (hop 2.0 s).
+# Standalone SELD input context extension: ResNet base, full-clip mode, TAU-NIGENS2021
+# Architecture: resnet_starss23 (resnet_block×2 + TT×2 + BiGRU×1, cs_early=false, cs_late=false)
+# Dataset: TAU-NIGENS2021 — all clips exactly 60 s → T_mel=6001 frames, no variability in batch
+# collate_fn pads each batch to the longest item; with batch_size=1 no padding occurs
+# Runner: main_standalone_seld.py --config-file <this_file>
+# Note: --window-s / --hop-s omit from CLI (runner reads data.window_s=null → full-clip)
 
 experiment:
-  name: resnet_ictx_tt4_taunigens_w30
+  name: resnet_ictx_base_taunigens_clip
   seed: 42
 
 input:
@@ -28,13 +27,12 @@ spatial_early:
   dropout:        0.1
 
 spatial_late:
-  type:          track_transformer
-  n_layers:      3             # was 2 — third TT layer adds another self-attention pass per track
-  d_model:       128
-  n_heads:       4
-  n_tracks:      4             # was 3 — extra track for assignment stability
-  ffn_expansion: 6             # was implicit 4 — TT FFN dim 512 → 768 per layer
-  dropout:       0.1
+  type:     track_transformer
+  n_layers: 2
+  d_model:  128
+  n_heads:  4
+  n_tracks: 3
+  dropout:  0.1
 
 track_smoothing:
   type:        bigru
@@ -43,7 +41,7 @@ track_smoothing:
   dropout:     0.1
 
 heads:
-  n_tracks:  4                 # must match spatial_late.n_tracks
+  n_tracks:  3
   n_classes: 12
   proj_dim:  null
 
@@ -54,7 +52,7 @@ cross_stitch:
 training:
   dataset_mode:     TAU-NIGENS2021
   epochs:           100
-  batch_size:       1       # effective_batch=16 via accumulate_grad_batches=16
+  batch_size:       1       # effective_batch=32 via accumulate_grad_batches=32
   patience:         30
   beta_sed:         0.9
   focal_gamma:      2.0
@@ -83,8 +81,8 @@ augmentation:
 
 data:
   root_path:    data/TAU-NIGENS2021
-  window_s:     30.0
-  hop_s:        2.0
+  window_s:     null    # full-clip mode — runner reads null → windowed=False
+  hop_s:        null    # unused in full-clip mode
   val_fraction: 0.2     # ignored — TAU-NIGENS2021 uses fixed dev split
   val_seed:     42
   num_workers:  4
