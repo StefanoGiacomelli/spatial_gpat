@@ -176,7 +176,16 @@ class tPITLoss(nn.Module):
 
         # ── DOA loss configuration ────────────────────────────────────────
         cfg = doa_loss_cfg or {}
-        self.doa_mode             = cfg.get('mode', 'legacy_mse_all')
+        self.doa_mode = cfg.get('mode', 'legacy_mse_all')
+        _VALID_DOA_MODES = {
+            'legacy_mse_all', 'active_mse',
+            'active_cosine_norm', 'active_cosine_norm_smooth',
+        }
+        if self.doa_mode not in _VALID_DOA_MODES:
+            raise ValueError(
+                f"Unknown doa_loss mode '{self.doa_mode}'. "
+                f"Expected one of {sorted(_VALID_DOA_MODES)}."
+            )
         # Use TARGET_THRESH as default so active detection is consistent across the codebase
         self.doa_active_eps       = float(cfg.get('active_eps', TARGET_THRESH))
         self.doa_mse_weight       = float(cfg.get('mse_weight',       1.0))
