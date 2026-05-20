@@ -53,7 +53,7 @@ cross_stitch:
 
 training:
   dataset_mode:     BalancedSTARSS23
-  epochs:           100
+  epochs:           40
   batch_size:       2       # effective_batch=32 via accumulate_grad_batches=16
   patience:         30
   beta_sed:         0.9
