@@ -78,6 +78,7 @@ from typing import List, Optional
 warnings.filterwarnings('ignore', message='.*LeafSpec.*deprecated.*')
 warnings.filterwarnings('ignore', message='.*elements was resized.*')
 warnings.filterwarnings('ignore', message='.*No positive samples.*')
+warnings.filterwarnings('ignore', message='.*pkg_resources is deprecated.*')
 
 import torch
 import yaml
@@ -337,7 +338,6 @@ _TRAINING_DEFAULTS = {
     'lr':                  _DEFAULT_LR,
     'beta_sed':            0.6,
     'focal_gamma':         0.0,
-    'pos_weight_max':      20.0,
     'angle_thresh':        20.0,
     'lr_warmup_epochs':    5,
     'lr_min':              1e-6,

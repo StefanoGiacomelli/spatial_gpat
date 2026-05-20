@@ -1,0 +1,255 @@
+exp_name,split,dataset_subset,class_idx,class_name,tp,fp,fn,precision,recall,f1
+exp_ft_mixed_bce,val,starss23,0,Female speech,199337,104977,102847,0.655037,0.659654,0.657338
+exp_ft_mixed_bce,val,starss23,1,Male speech,143359,139878,140825,0.506145,0.504458,0.505300
+exp_ft_mixed_bce,val,starss23,2,Clapping,0,1411,1209,0.000000,0.000000,0.000000
+exp_ft_mixed_bce,val,starss23,3,Telephone,883,10299,10567,0.078966,0.077118,0.078031
+exp_ft_mixed_bce,val,starss23,4,Laughter,11612,31447,34998,0.269676,0.249131,0.258997
+exp_ft_mixed_bce,val,starss23,5,Domestic sounds,176637,81801,80217,0.683479,0.687694,0.685580
+exp_ft_mixed_bce,val,starss23,6,"Walk, footsteps",4322,21914,21215,0.164735,0.169245,0.166960
+exp_ft_mixed_bce,val,starss23,7,Door open/close,6161,4299,3856,0.589006,0.615054,0.601748
+exp_ft_mixed_bce,val,starss23,8,Music,156632,46406,44497,0.771442,0.778764,0.775086
+exp_ft_mixed_bce,val,starss23,9,Musical instrument,0,708,7519,0.000000,0.000000,0.000000
+exp_ft_mixed_bce,val,starss23,10,Water tap,897,135,104,0.869186,0.896104,0.882440
+exp_ft_mixed_bce,val,starss23,11,Bell,22345,662,802,0.971226,0.965352,0.968280
+exp_ft_mixed_bce,val,starss23,12,Knock,0,1699,1269,0.000000,0.000000,0.000000
+exp_ft_mixed_bce,test,starss23,0,Female speech,150551,1126950,922882,0.117848,0.140252,0.128078
+exp_ft_mixed_bce,test,starss23,1,Male speech,332884,1086142,1241402,0.234586,0.211451,0.222419
+exp_ft_mixed_bce,test,starss23,2,Clapping,254,29355,27888,0.008578,0.009026,0.008796
+exp_ft_mixed_bce,test,starss23,3,Telephone,1502,62084,34451,0.023622,0.041777,0.030179
+exp_ft_mixed_bce,test,starss23,4,Laughter,4010,87470,157262,0.043835,0.024865,0.031731
+exp_ft_mixed_bce,test,starss23,5,Domestic sounds,17312,457038,617941,0.036496,0.027252,0.031204
+exp_ft_mixed_bce,test,starss23,6,"Walk, footsteps",1642,36512,179331,0.043036,0.009073,0.014987
+exp_ft_mixed_bce,test,starss23,7,Door open/close,4138,15816,17291,0.207377,0.193103,0.199986
+exp_ft_mixed_bce,test,starss23,8,Music,93029,1071812,1145895,0.079864,0.075089,0.077403
+exp_ft_mixed_bce,test,starss23,9,Musical instrument,14324,485888,1015733,0.028636,0.013906,0.018721
+exp_ft_mixed_bce,test,starss23,10,Water tap,5278,20475,96418,0.204947,0.051900,0.082825
+exp_ft_mixed_bce,test,starss23,11,Bell,82,18804,45717,0.004342,0.001790,0.002535
+exp_ft_mixed_bce,test,starss23,12,Knock,154,2961,1563,0.049438,0.089691,0.063742
+exp_ft_mixed_bce,test,tau_nigens,0,Female speech,1442,219317,68372,0.006532,0.020655,0.009925
+exp_ft_mixed_bce,test,tau_nigens,1,Male speech,9721,216661,251397,0.042941,0.037228,0.039881
+exp_ft_mixed_bce,test,tau_nigens,2,Clapping,0,0,0,0.000000,0.000000,0.000000
+exp_ft_mixed_bce,test,tau_nigens,3,Telephone,2290,153034,188898,0.014743,0.011978,0.013217
+exp_ft_mixed_bce,test,tau_nigens,4,Laughter,0,1185,0,0.000000,0.000000,0.000000
+exp_ft_mixed_bce,test,tau_nigens,5,Domestic sounds,0,34,0,0.000000,0.000000,0.000000
+exp_ft_mixed_bce,test,tau_nigens,6,"Walk, footsteps",11958,556768,721441,0.021026,0.016305,0.018367
+exp_ft_mixed_bce,test,tau_nigens,7,Door open/close,0,96,0,0.000000,0.000000,0.000000
+exp_ft_mixed_bce,test,tau_nigens,8,Music,17617,281925,401975,0.058813,0.041986,0.048995
+exp_ft_mixed_bce,test,tau_nigens,9,Musical instrument,21741,285380,397851,0.070790,0.051815,0.059834
+exp_ft_mixed_bce,test,tau_nigens,10,Water tap,0,292,0,0.000000,0.000000,0.000000
+exp_ft_mixed_bce,test,tau_nigens,11,Bell,0,0,0,0.000000,0.000000,0.000000
+exp_ft_mixed_bce,test,tau_nigens,12,Knock,1580,105770,93870,0.014718,0.016553,0.015582
+exp_ft_mixed_bce,test,tau2019,0,Female speech,0,15410,0,0.000000,0.000000,0.000000
+exp_ft_mixed_bce,test,tau2019,1,Male speech,0,2737,0,0.000000,0.000000,0.000000
+exp_ft_mixed_bce,test,tau2019,2,Clapping,0,0,0,0.000000,0.000000,0.000000
+exp_ft_mixed_bce,test,tau2019,3,Telephone,12679,237919,255474,0.050595,0.047283,0.048883
+exp_ft_mixed_bce,test,tau2019,4,Laughter,12302,227095,248839,0.051387,0.047109,0.049155
+exp_ft_mixed_bce,test,tau2019,5,Domestic sounds,47532,540733,623088,0.080800,0.070878,0.075514
+exp_ft_mixed_bce,test,tau2019,6,"Walk, footsteps",0,382,0,0.000000,0.000000,0.000000
+exp_ft_mixed_bce,test,tau2019,7,Door open/close,3251,63760,94214,0.048514,0.033356,0.039532
+exp_ft_mixed_bce,test,tau2019,8,Music,0,247,0,0.000000,0.000000,0.000000
+exp_ft_mixed_bce,test,tau2019,9,Musical instrument,0,0,0,0.000000,0.000000,0.000000
+exp_ft_mixed_bce,test,tau2019,10,Water tap,0,0,0,0.000000,0.000000,0.000000
+exp_ft_mixed_bce,test,tau2019,11,Bell,0,1,0,0.000000,0.000000,0.000000
+exp_ft_mixed_bce,test,tau2019,12,Knock,3401,110771,119838,0.029788,0.027597,0.028651
+exp_ft_mixed_focal,val,starss23,0,Female speech,194739,91036,107445,0.681442,0.644438,0.662424
+exp_ft_mixed_focal,val,starss23,1,Male speech,158944,100137,125240,0.613492,0.559300,0.585144
+exp_ft_mixed_focal,val,starss23,2,Clapping,0,1456,1209,0.000000,0.000000,0.000000
+exp_ft_mixed_focal,val,starss23,3,Telephone,163,12415,11287,0.012959,0.014236,0.013568
+exp_ft_mixed_focal,val,starss23,4,Laughter,15541,25264,31069,0.380860,0.333426,0.355568
+exp_ft_mixed_focal,val,starss23,5,Domestic sounds,194021,65436,62833,0.747796,0.755375,0.751566
+exp_ft_mixed_focal,val,starss23,6,"Walk, footsteps",6344,22261,19193,0.221779,0.248424,0.234347
+exp_ft_mixed_focal,val,starss23,7,Door open/close,5725,3460,4292,0.623299,0.571528,0.596292
+exp_ft_mixed_focal,val,starss23,8,Music,179812,17969,21317,0.909147,0.894013,0.901517
+exp_ft_mixed_focal,val,starss23,9,Musical instrument,1380,1514,6139,0.476849,0.183535,0.265053
+exp_ft_mixed_focal,val,starss23,10,Water tap,960,71,41,0.931135,0.959041,0.944882
+exp_ft_mixed_focal,val,starss23,11,Bell,21473,428,1674,0.980458,0.927680,0.953339
+exp_ft_mixed_focal,val,starss23,12,Knock,0,1386,1269,0.000000,0.000000,0.000000
+exp_ft_mixed_focal,test,starss23,0,Female speech,248430,884087,825003,0.219361,0.231435,0.225236
+exp_ft_mixed_focal,test,starss23,1,Male speech,460024,767510,1114262,0.374755,0.292211,0.328375
+exp_ft_mixed_focal,test,starss23,2,Clapping,4028,20998,24114,0.160953,0.143131,0.151520
+exp_ft_mixed_focal,test,starss23,3,Telephone,540,51859,35413,0.010306,0.015020,0.012224
+exp_ft_mixed_focal,test,starss23,4,Laughter,6252,79997,155020,0.072488,0.038767,0.050517
+exp_ft_mixed_focal,test,starss23,5,Domestic sounds,65209,348881,570044,0.157475,0.102650,0.124285
+exp_ft_mixed_focal,test,starss23,6,"Walk, footsteps",2492,94373,178481,0.025727,0.013770,0.017939
+exp_ft_mixed_focal,test,starss23,7,Door open/close,1999,9635,19430,0.171824,0.093285,0.120921
+exp_ft_mixed_focal,test,starss23,8,Music,79063,1019117,1159861,0.071995,0.063816,0.067659
+exp_ft_mixed_focal,test,starss23,9,Musical instrument,75653,440804,954404,0.146485,0.073445,0.097837
+exp_ft_mixed_focal,test,starss23,10,Water tap,1086,19041,100610,0.053957,0.010679,0.017829
+exp_ft_mixed_focal,test,starss23,11,Bell,133,7468,45666,0.017498,0.002904,0.004981
+exp_ft_mixed_focal,test,starss23,12,Knock,0,1692,1717,0.000000,0.000000,0.000000
+exp_ft_mixed_focal,test,tau_nigens,0,Female speech,3730,72794,66084,0.048743,0.053428,0.050978
+exp_ft_mixed_focal,test,tau_nigens,1,Male speech,28809,328263,232309,0.080681,0.110329,0.093204
+exp_ft_mixed_focal,test,tau_nigens,2,Clapping,0,0,0,0.000000,0.000000,0.000000
+exp_ft_mixed_focal,test,tau_nigens,3,Telephone,903,80286,190285,0.011122,0.004723,0.006631
+exp_ft_mixed_focal,test,tau_nigens,4,Laughter,0,403,0,0.000000,0.000000,0.000000
+exp_ft_mixed_focal,test,tau_nigens,5,Domestic sounds,0,0,0,0.000000,0.000000,0.000000
+exp_ft_mixed_focal,test,tau_nigens,6,"Walk, footsteps",36447,718466,696952,0.048280,0.049696,0.048978
+exp_ft_mixed_focal,test,tau_nigens,7,Door open/close,0,151,0,0.000000,0.000000,0.000000
+exp_ft_mixed_focal,test,tau_nigens,8,Music,11201,298321,408391,0.036188,0.026695,0.030725
+exp_ft_mixed_focal,test,tau_nigens,9,Musical instrument,14250,239764,405342,0.056099,0.033962,0.042310
+exp_ft_mixed_focal,test,tau_nigens,10,Water tap,0,0,0,0.000000,0.000000,0.000000
+exp_ft_mixed_focal,test,tau_nigens,11,Bell,0,0,0,0.000000,0.000000,0.000000
+exp_ft_mixed_focal,test,tau_nigens,12,Knock,1341,118151,94109,0.011223,0.014049,0.012478
+exp_ft_mixed_focal,test,tau2019,0,Female speech,0,3133,0,0.000000,0.000000,0.000000
+exp_ft_mixed_focal,test,tau2019,1,Male speech,0,2667,0,0.000000,0.000000,0.000000
+exp_ft_mixed_focal,test,tau2019,2,Clapping,0,0,0,0.000000,0.000000,0.000000
+exp_ft_mixed_focal,test,tau2019,3,Telephone,20737,220759,247416,0.085869,0.077333,0.081378
+exp_ft_mixed_focal,test,tau2019,4,Laughter,23747,208819,237394,0.102109,0.090936,0.096199
+exp_ft_mixed_focal,test,tau2019,5,Domestic sounds,91256,459976,579364,0.165549,0.136077,0.149373
+exp_ft_mixed_focal,test,tau2019,6,"Walk, footsteps",0,8092,0,0.000000,0.000000,0.000000
+exp_ft_mixed_focal,test,tau2019,7,Door open/close,1041,49752,96424,0.020495,0.010681,0.014043
+exp_ft_mixed_focal,test,tau2019,8,Music,0,0,0,0.000000,0.000000,0.000000
+exp_ft_mixed_focal,test,tau2019,9,Musical instrument,0,0,0,0.000000,0.000000,0.000000
+exp_ft_mixed_focal,test,tau2019,10,Water tap,0,0,0,0.000000,0.000000,0.000000
+exp_ft_mixed_focal,test,tau2019,11,Bell,0,0,0,0.000000,0.000000,0.000000
+exp_ft_mixed_focal,test,tau2019,12,Knock,2732,101222,120507,0.026281,0.022168,0.024050
+exp_ft_tau2019_focal,val,single,0,Clearthroat,123843,9918,8448,0.925853,0.936141,0.930968
+exp_ft_tau2019_focal,val,single,1,Cough,150379,6832,6379,0.956542,0.959307,0.957923
+exp_ft_tau2019_focal,val,single,2,Doorslam,72595,7659,6356,0.904566,0.919494,0.911969
+exp_ft_tau2019_focal,val,single,3,Drawer,152046,7579,6368,0.952520,0.959802,0.956147
+exp_ft_tau2019_focal,val,single,4,Keyboard,280012,9644,10318,0.966705,0.964461,0.965582
+exp_ft_tau2019_focal,val,single,5,KeysDrop,60753,6159,5352,0.907954,0.919038,0.913462
+exp_ft_tau2019_focal,val,single,6,Knock,121830,7226,6895,0.944009,0.946436,0.945221
+exp_ft_tau2019_focal,val,single,7,Laughter,229625,9954,8300,0.958452,0.965115,0.961772
+exp_ft_tau2019_focal,val,single,8,Pageturn,149443,9059,9177,0.942846,0.942145,0.942495
+exp_ft_tau2019_focal,val,single,9,Phone,279718,5475,6756,0.980802,0.976417,0.978605
+exp_ft_tau2019_focal,val,single,10,Speech,238908,6329,6403,0.974192,0.973898,0.974045
+exp_ft_tau2019_focal,test,single,0,Clearthroat,84093,21647,15811,0.795281,0.841738,0.817850
+exp_ft_tau2019_focal,test,single,1,Cough,115542,15682,16397,0.880494,0.875723,0.878102
+exp_ft_tau2019_focal,test,single,2,Doorslam,69793,23369,27672,0.749157,0.716083,0.732247
+exp_ft_tau2019_focal,test,single,3,Drawer,131887,22617,44756,0.853615,0.746630,0.796547
+exp_ft_tau2019_focal,test,single,4,Keyboard,247013,25404,40210,0.906746,0.860004,0.882757
+exp_ft_tau2019_focal,test,single,5,KeysDrop,42211,11711,12917,0.782816,0.765691,0.774159
+exp_ft_tau2019_focal,test,single,6,Knock,96498,16238,26741,0.855964,0.783015,0.817866
+exp_ft_tau2019_focal,test,single,7,Laughter,232211,27980,28930,0.892464,0.889217,0.890837
+exp_ft_tau2019_focal,test,single,8,Pageturn,128907,29201,22719,0.815310,0.850164,0.832372
+exp_ft_tau2019_focal,test,single,9,Phone,249600,15040,18553,0.943168,0.930812,0.936949
+exp_ft_tau2019_focal,test,single,10,Speech,245386,17392,23786,0.933815,0.911633,0.922590
+exp_ft_tau_nigens_focal,val,single,0,Alarm,194916,175899,372221,0.525642,0.343684,0.415620
+exp_ft_tau_nigens_focal,val,single,1,Baby cry,140887,169053,345986,0.454562,0.289371,0.353626
+exp_ft_tau_nigens_focal,val,single,2,Crash,135940,351566,412853,0.278848,0.247707,0.262357
+exp_ft_tau_nigens_focal,val,single,3,Dog bark,51538,60054,76055,0.461843,0.403925,0.430947
+exp_ft_tau_nigens_focal,val,single,4,Female scream,25734,34468,71424,0.427461,0.264868,0.327072
+exp_ft_tau_nigens_focal,val,single,5,Female speech,24069,16515,15896,0.593066,0.602252,0.597624
+exp_ft_tau_nigens_focal,val,single,6,Footstep,192348,356738,681802,0.350306,0.220040,0.270297
+exp_ft_tau_nigens_focal,val,single,7,Knock,10935,24696,59607,0.306896,0.155014,0.205985
+exp_ft_tau_nigens_focal,val,single,8,Male scream,34237,133862,39396,0.203672,0.464968,0.283264
+exp_ft_tau_nigens_focal,val,single,9,Male speech,14689,17664,71567,0.454023,0.170295,0.247688
+exp_ft_tau_nigens_focal,val,single,10,Phone ring,70436,117579,168476,0.374630,0.294820,0.329967
+exp_ft_tau_nigens_focal,val,single,11,Piano,110705,167380,234204,0.398098,0.320969,0.355397
+exp_ft_tau_nigens_focal,test,single,0,Alarm,228502,327177,401326,0.411212,0.362801,0.385492
+exp_ft_tau_nigens_focal,test,single,1,Baby cry,145161,209652,242783,0.409120,0.374180,0.390871
+exp_ft_tau_nigens_focal,test,single,2,Crash,92909,103746,218446,0.472447,0.298402,0.365776
+exp_ft_tau_nigens_focal,test,single,3,Dog bark,95955,113700,159015,0.457680,0.376338,0.413043
+exp_ft_tau_nigens_focal,test,single,4,Female scream,9069,70822,21038,0.113517,0.301226,0.164894
+exp_ft_tau_nigens_focal,test,single,5,Female speech,14693,22154,25014,0.398757,0.370036,0.383860
+exp_ft_tau_nigens_focal,test,single,6,Footstep,159136,364536,574263,0.303885,0.216984,0.253185
+exp_ft_tau_nigens_focal,test,single,7,Knock,16250,87766,79200,0.156226,0.170246,0.162935
+exp_ft_tau_nigens_focal,test,single,8,Male scream,38013,81548,141866,0.317938,0.211325,0.253894
+exp_ft_tau_nigens_focal,test,single,9,Male speech,23286,47974,57953,0.326775,0.286636,0.305392
+exp_ft_tau_nigens_focal,test,single,10,Phone ring,24873,147333,166315,0.144437,0.130097,0.136893
+exp_ft_tau_nigens_focal,test,single,11,Piano,86280,114296,333312,0.430161,0.205628,0.278247
+exp_topt_BiGRU_n2_h512_merge_sum,val,starss23,0,Female speech,211562,67015,90622,0.759438,0.700110,0.728568
+exp_topt_BiGRU_n2_h512_merge_sum,val,starss23,1,Male speech,182848,84586,101336,0.683713,0.643414,0.662952
+exp_topt_BiGRU_n2_h512_merge_sum,val,starss23,2,Clapping,0,336,1209,0.000000,0.000000,0.000000
+exp_topt_BiGRU_n2_h512_merge_sum,val,starss23,3,Telephone,580,12081,10870,0.045810,0.050655,0.048111
+exp_topt_BiGRU_n2_h512_merge_sum,val,starss23,4,Laughter,15490,23438,31120,0.397914,0.332332,0.362178
+exp_topt_BiGRU_n2_h512_merge_sum,val,starss23,5,Domestic sounds,196004,62429,60850,0.758433,0.763095,0.760757
+exp_topt_BiGRU_n2_h512_merge_sum,val,starss23,6,"Walk, footsteps",3074,23482,22463,0.115755,0.120374,0.118020
+exp_topt_BiGRU_n2_h512_merge_sum,val,starss23,7,Door open/close,4750,4865,5267,0.494020,0.474194,0.483904
+exp_topt_BiGRU_n2_h512_merge_sum,val,starss23,8,Music,158886,40874,42243,0.795384,0.789971,0.792668
+exp_topt_BiGRU_n2_h512_merge_sum,val,starss23,9,Musical instrument,334,1524,7185,0.179763,0.044421,0.071238
+exp_topt_BiGRU_n2_h512_merge_sum,val,starss23,10,Water tap,941,34,60,0.965128,0.940060,0.952429
+exp_topt_BiGRU_n2_h512_merge_sum,val,starss23,11,Bell,21378,441,1769,0.979788,0.923575,0.950852
+exp_topt_BiGRU_n2_h512_merge_sum,val,starss23,12,Knock,978,620,291,0.612015,0.770686,0.682246
+exp_topt_BiGRU_n2_h512_merge_sum,test,starss23,0,Female speech,269288,840607,804145,0.242625,0.250866,0.246677
+exp_topt_BiGRU_n2_h512_merge_sum,test,starss23,1,Male speech,305101,930696,1269185,0.246886,0.193803,0.217147
+exp_topt_BiGRU_n2_h512_merge_sum,test,starss23,2,Clapping,2390,20022,25752,0.106639,0.084926,0.094552
+exp_topt_BiGRU_n2_h512_merge_sum,test,starss23,3,Telephone,3459,96440,32494,0.034625,0.096209,0.050923
+exp_topt_BiGRU_n2_h512_merge_sum,test,starss23,4,Laughter,10800,99252,150472,0.098135,0.066968,0.079610
+exp_topt_BiGRU_n2_h512_merge_sum,test,starss23,5,Domestic sounds,37877,440170,597376,0.079233,0.059625,0.068045
+exp_topt_BiGRU_n2_h512_merge_sum,test,starss23,6,"Walk, footsteps",6875,39637,174098,0.147811,0.037989,0.060444
+exp_topt_BiGRU_n2_h512_merge_sum,test,starss23,7,Door open/close,1696,15841,19733,0.096710,0.079145,0.087050
+exp_topt_BiGRU_n2_h512_merge_sum,test,starss23,8,Music,84152,912196,1154772,0.084460,0.067923,0.075295
+exp_topt_BiGRU_n2_h512_merge_sum,test,starss23,9,Musical instrument,23150,246066,1006907,0.085990,0.022474,0.035635
+exp_topt_BiGRU_n2_h512_merge_sum,test,starss23,10,Water tap,1689,16400,100007,0.093372,0.016608,0.028201
+exp_topt_BiGRU_n2_h512_merge_sum,test,starss23,11,Bell,415,5870,45384,0.066030,0.009061,0.015936
+exp_topt_BiGRU_n2_h512_merge_sum,test,starss23,12,Knock,0,1603,1717,0.000000,0.000000,0.000000
+exp_topt_BiGRU_n2_h512_merge_sum,test,tau_nigens,0,Female speech,2359,139279,67455,0.016655,0.033790,0.022312
+exp_topt_BiGRU_n2_h512_merge_sum,test,tau_nigens,1,Male speech,12927,206953,248191,0.058791,0.049506,0.053751
+exp_topt_BiGRU_n2_h512_merge_sum,test,tau_nigens,2,Clapping,0,0,0,0.000000,0.000000,0.000000
+exp_topt_BiGRU_n2_h512_merge_sum,test,tau_nigens,3,Telephone,3325,175108,187863,0.018634,0.017391,0.017991
+exp_topt_BiGRU_n2_h512_merge_sum,test,tau_nigens,4,Laughter,0,685,0,0.000000,0.000000,0.000000
+exp_topt_BiGRU_n2_h512_merge_sum,test,tau_nigens,5,Domestic sounds,0,18,0,0.000000,0.000000,0.000000
+exp_topt_BiGRU_n2_h512_merge_sum,test,tau_nigens,6,"Walk, footsteps",11445,416778,721954,0.026727,0.015605,0.019705
+exp_topt_BiGRU_n2_h512_merge_sum,test,tau_nigens,7,Door open/close,0,60,0,0.000000,0.000000,0.000000
+exp_topt_BiGRU_n2_h512_merge_sum,test,tau_nigens,8,Music,11763,245360,407829,0.045749,0.028034,0.034765
+exp_topt_BiGRU_n2_h512_merge_sum,test,tau_nigens,9,Musical instrument,19013,234234,400579,0.075077,0.045313,0.056516
+exp_topt_BiGRU_n2_h512_merge_sum,test,tau_nigens,10,Water tap,0,0,0,0.000000,0.000000,0.000000
+exp_topt_BiGRU_n2_h512_merge_sum,test,tau_nigens,11,Bell,0,0,0,0.000000,0.000000,0.000000
+exp_topt_BiGRU_n2_h512_merge_sum,test,tau_nigens,12,Knock,1801,148108,93649,0.012014,0.018869,0.014681
+exp_topt_BiGRU_n2_h512_merge_sum,test,tau2019,0,Female speech,0,4830,0,0.000000,0.000000,0.000000
+exp_topt_BiGRU_n2_h512_merge_sum,test,tau2019,1,Male speech,0,474,0,0.000000,0.000000,0.000000
+exp_topt_BiGRU_n2_h512_merge_sum,test,tau2019,2,Clapping,0,0,0,0.000000,0.000000,0.000000
+exp_topt_BiGRU_n2_h512_merge_sum,test,tau2019,3,Telephone,26654,236100,241499,0.101441,0.099398,0.100409
+exp_topt_BiGRU_n2_h512_merge_sum,test,tau2019,4,Laughter,41776,194472,219365,0.176831,0.159975,0.167981
+exp_topt_BiGRU_n2_h512_merge_sum,test,tau2019,5,Domestic sounds,63160,527253,607460,0.106976,0.094182,0.100172
+exp_topt_BiGRU_n2_h512_merge_sum,test,tau2019,6,"Walk, footsteps",0,104,0,0.000000,0.000000,0.000000
+exp_topt_BiGRU_n2_h512_merge_sum,test,tau2019,7,Door open/close,4816,56980,92649,0.077934,0.049413,0.060479
+exp_topt_BiGRU_n2_h512_merge_sum,test,tau2019,8,Music,0,0,0,0.000000,0.000000,0.000000
+exp_topt_BiGRU_n2_h512_merge_sum,test,tau2019,9,Musical instrument,0,0,0,0.000000,0.000000,0.000000
+exp_topt_BiGRU_n2_h512_merge_sum,test,tau2019,10,Water tap,0,0,0,0.000000,0.000000,0.000000
+exp_topt_BiGRU_n2_h512_merge_sum,test,tau2019,11,Bell,0,0,0,0.000000,0.000000,0.000000
+exp_topt_BiGRU_n2_h512_merge_sum,test,tau2019,12,Knock,4316,97309,118923,0.042470,0.035021,0.038388
+exp_topt_TT_n1_ffn8_pe_4tracks,val,starss23,0,Female speech,214325,81972,87859,0.723345,0.709253,0.716230
+exp_topt_TT_n1_ffn8_pe_4tracks,val,starss23,1,Male speech,136110,130651,148074,0.510232,0.478950,0.494097
+exp_topt_TT_n1_ffn8_pe_4tracks,val,starss23,2,Clapping,0,1000,1209,0.000000,0.000000,0.000000
+exp_topt_TT_n1_ffn8_pe_4tracks,val,starss23,3,Telephone,710,12170,10740,0.055124,0.062009,0.058364
+exp_topt_TT_n1_ffn8_pe_4tracks,val,starss23,4,Laughter,13096,20461,34194,0.390261,0.276930,0.323970
+exp_topt_TT_n1_ffn8_pe_4tracks,val,starss23,5,Domestic sounds,188607,94722,68247,0.665682,0.734297,0.698308
+exp_topt_TT_n1_ffn8_pe_4tracks,val,starss23,6,"Walk, footsteps",8105,34444,17432,0.190486,0.317383,0.238081
+exp_topt_TT_n1_ffn8_pe_4tracks,val,starss23,7,Door open/close,4946,3427,5071,0.590708,0.493761,0.537901
+exp_topt_TT_n1_ffn8_pe_4tracks,val,starss23,8,Music,156603,42909,44526,0.784930,0.778620,0.781762
+exp_topt_TT_n1_ffn8_pe_4tracks,val,starss23,9,Musical instrument,2300,612,5219,0.789835,0.305892,0.440993
+exp_topt_TT_n1_ffn8_pe_4tracks,val,starss23,10,Water tap,992,36,9,0.964981,0.991009,0.977822
+exp_topt_TT_n1_ffn8_pe_4tracks,val,starss23,11,Bell,20964,2091,2183,0.909304,0.905690,0.907493
+exp_topt_TT_n1_ffn8_pe_4tracks,val,starss23,12,Knock,966,256,303,0.790507,0.761229,0.775592
+exp_topt_TT_n1_ffn8_pe_4tracks,test,starss23,0,Female speech,237638,945430,835795,0.200866,0.221381,0.210625
+exp_topt_TT_n1_ffn8_pe_4tracks,test,starss23,1,Male speech,364404,917109,1209882,0.284355,0.231473,0.255203
+exp_topt_TT_n1_ffn8_pe_4tracks,test,starss23,2,Clapping,753,12620,27389,0.056307,0.026757,0.036276
+exp_topt_TT_n1_ffn8_pe_4tracks,test,starss23,3,Telephone,3407,47184,32546,0.067344,0.094763,0.078735
+exp_topt_TT_n1_ffn8_pe_4tracks,test,starss23,4,Laughter,3489,68711,157783,0.048324,0.021634,0.029888
+exp_topt_TT_n1_ffn8_pe_4tracks,test,starss23,5,Domestic sounds,51273,534291,583980,0.087562,0.080713,0.083998
+exp_topt_TT_n1_ffn8_pe_4tracks,test,starss23,6,"Walk, footsteps",826,161321,180147,0.005094,0.004564,0.004815
+exp_topt_TT_n1_ffn8_pe_4tracks,test,starss23,7,Door open/close,680,11631,20749,0.055235,0.031733,0.040308
+exp_topt_TT_n1_ffn8_pe_4tracks,test,starss23,8,Music,83460,939583,1155464,0.081580,0.067365,0.073794
+exp_topt_TT_n1_ffn8_pe_4tracks,test,starss23,9,Musical instrument,31925,463898,1017552,0.064388,0.030420,0.041319
+exp_topt_TT_n1_ffn8_pe_4tracks,test,starss23,10,Water tap,645,23811,101051,0.026374,0.006342,0.010226
+exp_topt_TT_n1_ffn8_pe_4tracks,test,starss23,11,Bell,110,16748,45689,0.006525,0.002402,0.003511
+exp_topt_TT_n1_ffn8_pe_4tracks,test,starss23,12,Knock,0,1302,1717,0.000000,0.000000,0.000000
+exp_topt_TT_n1_ffn8_pe_4tracks,test,tau_nigens,0,Female speech,4708,197190,65106,0.023319,0.067436,0.034654
+exp_topt_TT_n1_ffn8_pe_4tracks,test,tau_nigens,1,Male speech,16268,214031,244850,0.070639,0.062301,0.066209
+exp_topt_TT_n1_ffn8_pe_4tracks,test,tau_nigens,2,Clapping,0,59,0,0.000000,0.000000,0.000000
+exp_topt_TT_n1_ffn8_pe_4tracks,test,tau_nigens,3,Telephone,2607,98812,188581,0.025705,0.013636,0.017819
+exp_topt_TT_n1_ffn8_pe_4tracks,test,tau_nigens,4,Laughter,0,1028,0,0.000000,0.000000,0.000000
+exp_topt_TT_n1_ffn8_pe_4tracks,test,tau_nigens,5,Domestic sounds,0,863,0,0.000000,0.000000,0.000000
+exp_topt_TT_n1_ffn8_pe_4tracks,test,tau_nigens,6,"Walk, footsteps",11471,359922,721928,0.030886,0.015641,0.020766
+exp_topt_TT_n1_ffn8_pe_4tracks,test,tau_nigens,7,Door open/close,0,0,0,0.000000,0.000000,0.000000
+exp_topt_TT_n1_ffn8_pe_4tracks,test,tau_nigens,8,Music,17479,282550,402113,0.058258,0.041657,0.048578
+exp_topt_TT_n1_ffn8_pe_4tracks,test,tau_nigens,9,Musical instrument,18631,239839,400961,0.072082,0.044403,0.054954
+exp_topt_TT_n1_ffn8_pe_4tracks,test,tau_nigens,10,Water tap,0,0,0,0.000000,0.000000,0.000000
+exp_topt_TT_n1_ffn8_pe_4tracks,test,tau_nigens,11,Bell,0,0,0,0.000000,0.000000,0.000000
+exp_topt_TT_n1_ffn8_pe_4tracks,test,tau_nigens,12,Knock,3940,162351,91510,0.023693,0.041278,0.030106
+exp_topt_TT_n1_ffn8_pe_4tracks,test,tau2019,0,Female speech,0,1978,0,0.000000,0.000000,0.000000
+exp_topt_TT_n1_ffn8_pe_4tracks,test,tau2019,1,Male speech,0,1601,0,0.000000,0.000000,0.000000
+exp_topt_TT_n1_ffn8_pe_4tracks,test,tau2019,2,Clapping,0,0,0,0.000000,0.000000,0.000000
+exp_topt_TT_n1_ffn8_pe_4tracks,test,tau2019,3,Telephone,47399,190431,220754,0.199298,0.176761,0.187354
+exp_topt_TT_n1_ffn8_pe_4tracks,test,tau2019,4,Laughter,28549,193420,232592,0.128617,0.109324,0.118188
+exp_topt_TT_n1_ffn8_pe_4tracks,test,tau2019,5,Domestic sounds,74135,513110,596485,0.126242,0.110547,0.117874
+exp_topt_TT_n1_ffn8_pe_4tracks,test,tau2019,6,"Walk, footsteps",0,71,0,0.000000,0.000000,0.000000
+exp_topt_TT_n1_ffn8_pe_4tracks,test,tau2019,7,Door open/close,1415,42825,96050,0.031985,0.014518,0.019971
+exp_topt_TT_n1_ffn8_pe_4tracks,test,tau2019,8,Music,0,0,0,0.000000,0.000000,0.000000
+exp_topt_TT_n1_ffn8_pe_4tracks,test,tau2019,9,Musical instrument,0,0,0,0.000000,0.000000,0.000000
+exp_topt_TT_n1_ffn8_pe_4tracks,test,tau2019,10,Water tap,0,0,0,0.000000,0.000000,0.000000
+exp_topt_TT_n1_ffn8_pe_4tracks,test,tau2019,11,Bell,0,0,0,0.000000,0.000000,0.000000
+exp_topt_TT_n1_ffn8_pe_4tracks,test,tau2019,12,Knock,4800,97236,118439,0.047042,0.038949,0.042615
