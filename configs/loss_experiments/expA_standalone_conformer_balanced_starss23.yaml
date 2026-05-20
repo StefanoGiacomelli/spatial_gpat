@@ -1,0 +1,100 @@
+# Experiment A — Standalone Conformer, BalancedSTARSS23, active_mse DOA loss
+# Architecture: conformer_starss23.yaml — identical
+# Changes from baseline: dataset_mode STARSS23→BalancedSTARSS23, beta_sed 0.6→0.50
+
+experiment:
+  name: expA_standalone_conformer_balanced_starss23
+  seed: 42
+
+input:
+  type:        spectral
+  sr:          24000
+  n_mics:      4
+  n_fft:       1024
+  hop_length:  240
+  compute_iv:  true
+
+# ── Early stage: CNN frontend + ConformerBlock stack ──────────────────────────
+spatial_early:
+  type:           conformer
+  use_msca:       true
+  msca_reduction: 4
+  d_model:        128
+  n_conf_layers:  4
+  n_heads:        4
+  ffn_expansion:  4
+  conv_kernel:    31
+  dropout:        0.1
+
+# ── Late stage: per-track Transformer ─────────────────────────────────────────
+spatial_late:
+  type:     track_transformer
+  n_layers: 2
+  d_model:  128
+  n_heads:  4
+  n_tracks: 3
+  dropout:  0.1
+
+# ── Temporal smoother: per-track TCN ──────────────────────────────────────────
+track_smoothing:
+  type:        tcn
+  d_model:     128
+  n_layers:    6
+  kernel_size: 3
+  dropout:     0.1
+
+# ── Output heads ──────────────────────────────────────────────────────────────
+heads:
+  n_tracks:  3
+  n_classes: 13
+  proj_dim:  null
+
+# ── Cross-stitching ───────────────────────────────────────────────────────────
+cross_stitch:
+  cs_early_enabled: true
+  cs_late_enabled:  false
+
+# ── Training ──────────────────────────────────────────────────────────────────
+training:
+  dataset_mode:     BalancedSTARSS23  # was STARSS23 in conformer_starss23.yaml
+  epochs:           40
+  batch_size:       2
+  patience:         30
+  beta_sed:         0.50              # was 0.6 in conformer_starss23.yaml
+  focal_gamma:      0.0               # unchanged from conformer_starss23.yaml
+  angle_thresh:     20.0
+  weighted_sampler: false
+  lr:               3.0e-4
+  lr_warmup_epochs: 5
+  scheduler:        cosine
+  lr_min:           1.0e-5
+
+  doa_loss:
+    mode:             active_mse
+    mse_weight:       1.0
+    inactive_weight:  0.005
+    norm_weight:      0.0
+    direction_weight: 1.0
+    smooth_weight:    0.0
+
+metrics:
+  act_thresh: 0.5
+
+# ── Data augmentation ─────────────────────────────────────────────────────────
+augmentation:
+  enabled:      true
+  p_16patterns: 0.50
+  p_gain:       0.20
+  p_noise:      0.20
+  gain_min:     0.3
+  gain_max:     0.9
+  noise_snr_db: 35.0
+
+# ── Data ──────────────────────────────────────────────────────────────────────
+data:
+  root_path:    data/STARSS23
+  window_s:     10.0
+  hop_s:        2.5
+  val_fraction: 0.2
+  val_seed:     42
+  num_workers:  4

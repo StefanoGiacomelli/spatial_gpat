@@ -64,7 +64,7 @@ Stefano Giacomelli, Ph.D. candidate
 DISIM Department — University of L'Aquila
 """
 
-from dotenv import load_dotenv
+#from dotenv import load_dotenv
 
 import atexit
 import json
@@ -80,6 +80,7 @@ from typing import Optional
 warnings.filterwarnings('ignore', message='.*LeafSpec.*deprecated.*')
 warnings.filterwarnings('ignore', message='.*elements was resized.*')
 warnings.filterwarnings('ignore', message='.*No positive samples.*')
+warnings.filterwarnings('ignore', message='.*pkg_resources is deprecated.*')
 
 import torch
 import yaml
@@ -300,7 +301,6 @@ def _build_cfg(exp_yaml_path: Path, args) -> dict:
         'beta_sed':         0.6,    # SED/DOA split inside tPIT (DOA = 1-beta = 0.4)
         'focal_gamma':      0.0,
         'angle_thresh':     20.0,
-        'pos_weight_max':   20.0,
         'lr_reduce_factor': 0.75,   # ReduceLROnPlateau factor
         'lr_patience':      20,     # ReduceLROnPlateau patience (epochs)
         'lr_min':           1e-5,   # ReduceLROnPlateau LR floor
@@ -661,5 +661,5 @@ def main() -> None:
 
 
 if __name__ == '__main__':
-    load_dotenv()
+    #load_dotenv()
     main()
