@@ -1,0 +1,4 @@
+dataset,split,model_name,motion_type,n_events,n_slots,mean_AE,median_AE,p90_AE,acc_20deg,pred_norm_median,zero_norm_lt01
+starss23,test,nas_seld_x1,static,304,106993,83.401231,83.263039,95.123021,0.107532,0.401319,0.082043
+starss23,test,nas_seld_x1,quasi_static,24,12644,68.066699,67.287818,79.774435,0.187558,0.394882,0.057713
+starss23,test,nas_seld_x1,moving,39,20332,63.544489,62.056661,90.392209,0.215861,0.484119,0.054428

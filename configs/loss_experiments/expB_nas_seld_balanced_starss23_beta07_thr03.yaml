@@ -1,0 +1,103 @@
+# ExpB variant — NAS-SELD, BalancedSTARSS23, active_cosine_norm DOA loss
+# Changes from expB_nas_seld_balanced_starss23.yaml:
+#   beta_sed:   0.50 → 0.70  (higher SED weight, DOA loss now assumed more robust)
+#   act_thresh: 0.50 → 0.30  (threshold-sweep result from post-ExpA diagnostics)
+# DOA loss (active_cosine_norm) and all other settings are unchanged from ExpB.
+
+experiment:
+  name: expB_nas_seld_balanced_starss23_beta07_thr03
+  seed: 42
+
+input:
+  type: spectral
+  sr: 32000
+  n_mics: 4
+  hop_length: 320
+  n_fft: 512
+
+semantic:
+  dataset:    BalancedSTARSS23
+  checkpoint: semantic_backbone/epanns/checkpoint_closeto_.44.pt
+  early_group: {init: pretrained, frozen: false}
+  late_group:  {init: pretrained, frozen: false}
+  head_group:  {init: pretrained, frozen: false}
+
+cross_stitch:
+  cs_early_enabled: false
+  cs_late_enabled:  true
+  C_bridge_early: 64
+  C_bridge_late: 128
+
+spatial_early:
+  type: resnet_block
+  n_layers: 3
+  out_channels: 64
+  use_msca: true
+  msca_reduction: 4
+  stride: [1, 1]
+  dropout: 0.1
+
+spatial_late:
+  type: track_transformer
+  n_layers: 1
+  d_model: 128
+  n_heads: 4
+  n_tracks: 3
+  dropout: 0.1
+
+track_smoothing_spatial:
+  type: bigru
+  n_layers: 1
+  hidden_size: 256
+  dropout: 0.1
+
+heads:
+  n_tracks:  3
+  n_classes: 13
+
+data:
+  format:       foa
+  window_s:     10.0
+  hop_s:        2.5
+  val_fraction: 0.2
+  val_seed:     42
+  num_workers:  4
+
+augmentation:
+  enabled:      true
+  p_16patterns: 0.50
+  p_gain:       0.20
+  p_noise:      0.20
+  gain_min:     0.3
+  gain_max:     0.9
+  noise_snr_db: 35.0
+
+training:
+  epochs:           40
+  batch_size:       2
+  patience:         30
+
+  lambda_spatial:   0.9
+  lambda_semantic:  0.1
+  beta_sed:         0.70        # increased from 0.50 — higher SED weight
+  focal_gamma:      2.0
+  angle_thresh:     20.0
+
+  lr:               5.0e-4
+  lr_reduce_factor: 0.75
+  lr_patience:      10
+  lr_min:           1.0e-5
+
+  window_s:         10.0
+  hop_s:            2.5
+
+  # DOA loss: identical to ExpB (active_cosine_norm, no smoothness)
+  doa_loss:
+    mode:             active_cosine_norm
+    direction_weight: 1.0    # cosine/directional loss weight on active slots
+    norm_weight:      0.2    # pulls active prediction norm toward 1
+    inactive_weight:  0.005  # small norm suppression on inactive slots
+    smooth_weight:    0.0    # no smoothness penalty
+
+metrics:
+  act_thresh: 0.30   # global threshold — threshold-sweep result from post-ExpA diagnostics

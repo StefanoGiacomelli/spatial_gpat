@@ -1,0 +1,116 @@
+# Experiment A — NAS-SELD, TAU2019, active_mse DOA loss
+# Dataset-only variant of expA_nas_seld_balanced_starss23.yaml.
+# Architecture, loss, augmentation, and all training hyperparameters
+# are identical to ExpA. Only changes: dataset → TAU2019, n_classes 13→11,
+# data.fold added for FoldCyclingDataModule compatibility.
+#
+# labels_map.json: TAU2019 has 11 classes (verified).
+#
+# FoldCyclingDataModule cycles folds automatically as fold = (epoch % 4) + 1
+#
+# Launch command:
+#   python main_nas-seld.py \
+#     --config-file configs/loss_experiments/expA_nas_seld_tau2019.yaml \
+#     --dataset TAU2019 \
+#     --run-dir runs/at2seld_nas/loss_experiments_tau2019
+#
+# Note: --dataset CLI flag overwrites semantic.dataset at runtime (runner line 291).
+
+experiment:
+  name: expA_nas_seld_tau2019
+  seed: 42
+
+input:
+  type: spectral
+  sr: 32000
+  n_mics: 4
+  hop_length: 320
+  n_fft: 512
+
+semantic:
+  dataset:    TAU2019
+  checkpoint: semantic_backbone/epanns/checkpoint_closeto_.44.pt
+  early_group: {init: pretrained, frozen: false}
+  late_group:  {init: pretrained, frozen: false}
+  head_group:  {init: pretrained, frozen: false}
+
+cross_stitch:
+  cs_early_enabled: false
+  cs_late_enabled:  true
+  C_bridge_early: 64
+  C_bridge_late: 128
+
+spatial_early:
+  type: resnet_block
+  n_layers: 3
+  out_channels: 64
+  use_msca: true
+  msca_reduction: 4
+  stride: [1, 1]
+  dropout: 0.1
+
+spatial_late:
+  type: track_transformer
+  n_layers: 1
+  d_model: 128
+  n_heads: 4
+  n_tracks: 3
+  dropout: 0.1
+
+track_smoothing_spatial:
+  type: bigru
+  n_layers: 1
+  hidden_size: 256
+  dropout: 0.1
+
+heads:
+  n_tracks:  3
+  n_classes: 11    # TAU2019: 11 classes (vs 13 in BalancedSTARSS23)
+
+data:
+  format:       foa
+  window_s:     10.0
+  hop_s:        2.5
+  fold:         1          # FoldCyclingDataModule cycles automatically; value unused at runtime
+  val_fraction: 0.2
+  val_seed:     42
+  num_workers:  4
+
+augmentation:
+  enabled:      true
+  p_16patterns: 0.50
+  p_gain:       0.20
+  p_noise:      0.20
+  gain_min:     0.3
+  gain_max:     0.9
+  noise_snr_db: 35.0
+
+training:
+  epochs:           40
+  batch_size:       2
+  patience:         30
+
+  lambda_spatial:   0.9
+  lambda_semantic:  0.1
+  beta_sed:         0.50
+  focal_gamma:      2.0
+  angle_thresh:     20.0
+
+  lr:               5.0e-4
+  lr_reduce_factor: 0.75
+  lr_patience:      10
+  lr_min:           1.0e-5
+
+  window_s:         10.0
+  hop_s:            2.5
+
+  doa_loss:
+    mode:             active_mse
+    mse_weight:       1.0
+    inactive_weight:  0.005
+    norm_weight:      0.0
+    direction_weight: 1.0
+    smooth_weight:    0.0
+
+metrics:
+  act_thresh: 0.5
