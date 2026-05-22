@@ -15,6 +15,7 @@ soundfile
 tensorboard
 wandb
 python-dotenv
+sed_eval
 matplotlib
 seaborn
 
