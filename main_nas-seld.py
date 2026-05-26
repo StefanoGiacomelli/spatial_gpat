@@ -120,6 +120,7 @@ _DEFAULT_HOP_S       =  2.5    # unused in full-clip mode
 DATASET_ROOTS = {
     'STARSS23':       _ROOT / 'data' / 'STARSS23',
     'TAU-NIGENS2021': _ROOT / 'data' / 'TAU-NIGENS2021',
+    'TAU-NIGENS2020': _ROOT / 'data' / 'TAU-NIGENS2020',
     'TAU2019':        _ROOT / 'data' / 'TAU2019',
 }
 
@@ -154,7 +155,8 @@ def _parse_args():
 
     # ── Dataset ───────────────────────────────────────────────────────────────
     p.add_argument('--dataset', type=str, default='STARSS23',
-                   choices=['STARSS23', 'TAU-NIGENS2021', 'TAU2019', 'BalancedSTARSS23'],
+                   choices=['STARSS23', 'TAU-NIGENS2021', 'TAU-NIGENS2020',
+                            'TAU2019', 'BalancedSTARSS23'],
                    help='Dataset for training/validation/test.')
     p.add_argument('--starss-root',   type=Path, default=None, metavar='PATH',
                    help='STARSS23 root (BalancedSTARSS23 mode only).')

@@ -35,6 +35,26 @@
       {"name": "Knock",                           "audioset_indices": [359]}
     ]
   },
+  "TAU-NIGENS2020": {
+    "n_classes": 14,
+    "_note": "Indices for running_engine (343,306) and burning_fire (298,299) are approximate — verify against E-PANNs AudioSet class list before production use.",
+    "classes": [
+      {"name": "alarm",                           "audioset_indices": [388, 395, 396, 399, 400]},
+      {"name": "crying baby",                     "audioset_indices": [23]},
+      {"name": "crash",                           "audioset_indices": [443, 469, 470]},
+      {"name": "barking dog",                     "audioset_indices": [75, 78]},
+      {"name": "running engine",                  "audioset_indices": [343, 306]},
+      {"name": "female scream",                   "audioset_indices": [2, 14]},
+      {"name": "female speech",                   "audioset_indices": [2]},
+      {"name": "burning fire",                    "audioset_indices": [298, 299]},
+      {"name": "footsteps",                       "audioset_indices": [53]},
+      {"name": "knocking on door",                "audioset_indices": [359]},
+      {"name": "male scream",                     "audioset_indices": [1, 14]},
+      {"name": "male speech",                     "audioset_indices": [1]},
+      {"name": "ringing phone",                   "audioset_indices": [389, 390, 391]},
+      {"name": "piano",                           "audioset_indices": [153]}
+    ]
+  },
   "TAU-NIGENS2021": {
     "n_classes": 12,
     "classes": [

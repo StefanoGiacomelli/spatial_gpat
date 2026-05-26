@@ -5,7 +5,7 @@ TAU Spatial Sound Events 2019 (DCASE2019 Task 3).
 
 Audio format  : FOA, 48 kHz → resampled to 24 kHz before returning
 Annotations   : onset–offset CSV, columns: sound_event_recording, start_time,
-                end_time, ele, azi, dist  (NOTE: ele before azi!)
+                end_time, ele, azi, dist
 Classes       : 11 (clearthroat, cough, doorslam, drawer, keyboard,
                 keysDrop, knock, laughter, pageturn, phone, speech)
 

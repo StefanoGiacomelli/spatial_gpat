@@ -3,16 +3,14 @@
 #
 # Downloads and extracts each dataset component only if the target
 # directory / file is not already present (idempotent, FOA-only for SELD).
-# AudioSet is handled separately: the script only extracts the tar bundle
-# if it finds audioset_bundle.tar locally; otherwise it warns and skips.
 #
 # Usage
 # -----
-#   bash data/setup_data.sh                        # all datasets
+#   bash data/setup_data.sh                          # all datasets
 #   bash data/setup_data.sh --dataset STARSS23
 #   bash data/setup_data.sh --dataset TAU-NIGENS2021
+#   bash data/setup_data.sh --dataset TAU-NIGENS2020
 #   bash data/setup_data.sh --dataset TAU2019
-#   bash data/setup_data.sh --dataset audioset
 #
 # Prerequisites: curl, zip, unzip
 # Run from anywhere; all paths are resolved relative to this script.
@@ -31,21 +29,21 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         -h|--help)
-            sed -n '2,20p' "$0"
+            sed -n '2,16p' "$0"
             exit 0
             ;;
         *)
             echo "[ERROR] Unknown argument: $1" >&2
-            echo "Usage: $0 [--dataset STARSS23|TAU-NIGENS2021|TAU2019|audioset|all]" >&2
+            echo "Usage: $0 [--dataset STARSS23|TAU-NIGENS2021|TAU-NIGENS2020|TAU2019|all]" >&2
             exit 1
             ;;
     esac
 done
 
 case "$DATASET_FILTER" in
-    STARSS23|TAU-NIGENS2021|TAU2019|audioset|all) ;;
+    STARSS23|TAU-NIGENS2021|TAU-NIGENS2020|TAU2019|all) ;;
     *)
-        echo "[ERROR] --dataset must be one of: STARSS23, TAU-NIGENS2021, TAU2019, audioset, all" >&2
+        echo "[ERROR] --dataset must be one of: STARSS23, TAU-NIGENS2021, TAU-NIGENS2020, TAU2019, all" >&2
         exit 1
         ;;
 esac
@@ -103,37 +101,10 @@ fi
 
 # ── Dataset roots ─────────────────────────────────────────────────────────────
 
-AUDIOSET_DIR="${SCRIPT_DIR}/audioset-qiuqiangkong"
 STARSS23_DIR="${SCRIPT_DIR}/STARSS23"
 TAU_DIR="${SCRIPT_DIR}/TAU-NIGENS2021"
+TAU2020_DIR="${SCRIPT_DIR}/TAU-NIGENS2020"
 TAU2019_DIR="${SCRIPT_DIR}/TAU2019"
-
-# ══════════════════════════════════════════════════════════════════════════════
-# AudioSet — manual bundle extraction (not auto-downloaded)
-# ══════════════════════════════════════════════════════════════════════════════
-
-_setup_audioset() {
-    log "AudioSet ..."
-
-    if [[ -d "$AUDIOSET_DIR" && -n "$(ls -A "$AUDIOSET_DIR" 2>/dev/null)" ]]; then
-        log "  audioset-qiuqiangkong/ already present — skipping."
-        return
-    fi
-
-    local tar="${SCRIPT_DIR}/audioset_bundle.tar"
-    if [[ ! -f "$tar" ]]; then
-        warn "AudioSet: audioset_bundle.tar not found in ${SCRIPT_DIR}."
-        warn "  Download it manually from SharePoint and place it in data/ (see README.md)."
-        return
-    fi
-
-    mkdir -p "$AUDIOSET_DIR"
-    log "  extracting audioset_bundle.tar → audioset-qiuqiangkong/ ..."
-    tar -xf "$tar" -C "$AUDIOSET_DIR"
-    log "  removing audioset_bundle.tar ..."
-    rm -f "$tar"
-    log "  AudioSet done."
-}
 
 # ══════════════════════════════════════════════════════════════════════════════
 # STARSS23 — Zenodo record 7880637
@@ -256,6 +227,68 @@ _setup_tau_nigens() {
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
+# TAU-NIGENS2020 — Zenodo record 4064792
+#
+# FOA files downloaded:
+#   foa_dev.z01 + foa_dev.z02 + foa_dev.zip  (3-part split) → foa_dev/
+#   foa_eval.zip                              → foa_eval/
+#   metadata_dev.zip                          → metadata_dev/
+#   metadata_eval.zip                         → metadata_eval/
+#   README.md                                 (single file)
+# ══════════════════════════════════════════════════════════════════════════════
+
+_setup_tau_nigens2020() {
+    local D="$TAU2020_DIR"
+    local BASE="https://zenodo.org/records/4064792/files"
+    mkdir -p "$D"
+
+    log "TAU-NIGENS2020 ..."
+
+    # foa_dev is a 3-part split archive (foa_dev.z01, foa_dev.z02, foa_dev.zip)
+    if _has_wavs "$D/foa_dev"; then
+        log "  foa_dev/ — OK"
+    else
+        log "  foa_dev/ — missing, fetching (3-part split) ..."
+        _fetch "$D/foa_dev.z01" "${BASE}/foa_dev.z01?download=1"
+        _fetch "$D/foa_dev.z02" "${BASE}/foa_dev.z02?download=1"
+        _fetch "$D/foa_dev.zip" "${BASE}/foa_dev.zip?download=1"
+        _extract_split "$D" "foa_dev" "$D"
+    fi
+
+    if _has_wavs "$D/foa_eval"; then
+        log "  foa_eval/ — OK"
+    else
+        log "  foa_eval/ — missing, fetching ..."
+        _fetch "$D/foa_eval.zip" "${BASE}/foa_eval.zip?download=1"
+        _extract "$D/foa_eval.zip" "$D"
+    fi
+
+    if _has_csvs "$D/metadata_dev"; then
+        log "  metadata_dev/ — OK"
+    else
+        log "  metadata_dev/ — missing, fetching ..."
+        _fetch "$D/metadata_dev.zip" "${BASE}/metadata_dev.zip?download=1"
+        _extract "$D/metadata_dev.zip" "$D"
+    fi
+
+    if _has_csvs "$D/metadata_eval"; then
+        log "  metadata_eval/ — OK"
+    else
+        log "  metadata_eval/ — missing, fetching ..."
+        _fetch "$D/metadata_eval.zip" "${BASE}/metadata_eval.zip?download=1"
+        _extract "$D/metadata_eval.zip" "$D"
+    fi
+
+    if [[ -f "$D/README.md" ]]; then
+        log "  README.md — OK"
+    else
+        _fetch "$D/README.md" "${BASE}/README.md?download=1"
+    fi
+
+    log "  TAU-NIGENS2020 done."
+}
+
+# ══════════════════════════════════════════════════════════════════════════════
 # TAU2019 — Zenodo records 2599196 (dev) and 3377088 (eval)
 #
 # Dev files (record 2599196):
@@ -354,15 +387,15 @@ _setup_tau2019() {
 
 case "$DATASET_FILTER" in
     all)
-        _setup_audioset
         _setup_starss23
         _setup_tau_nigens
+        _setup_tau_nigens2020
         _setup_tau2019
         ;;
-    audioset)      _setup_audioset   ;;
-    STARSS23)      _setup_starss23   ;;
-    TAU-NIGENS2021) _setup_tau_nigens ;;
-    TAU2019)       _setup_tau2019    ;;
+    STARSS23)       _setup_starss23      ;;
+    TAU-NIGENS2021) _setup_tau_nigens    ;;
+    TAU-NIGENS2020) _setup_tau_nigens2020 ;;
+    TAU2019)        _setup_tau2019       ;;
 esac
 
 log "Done."

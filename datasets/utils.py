@@ -30,7 +30,7 @@ from __future__ import annotations
 import math
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 import soundfile as sf

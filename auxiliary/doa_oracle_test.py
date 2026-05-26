@@ -336,17 +336,18 @@ def count_parameters(model: nn.Module) -> Tuple[int, int]:
 
 
 def load_nas_model(cfg_path: Path, ckpt_path: Path,
-                   device: torch.device) -> Tuple[nn.Module, dict, int]:
-    """Load NASLightningModule checkpoint. Returns (model, cfg, orig_sr)."""
+                   device: torch.device) -> Tuple[nn.Module, dict, int, nn.Module]:
+    """Load NASLightningModule checkpoint. Returns (model, cfg, orig_sr, tpit_loss)."""
     from experiments_nas_seld.train import NASLightningModule
     cfg = load_yaml_cfg(cfg_path)
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
         module = NASLightningModule.load_from_checkpoint(
             str(ckpt_path), cfg=cfg, map_location='cpu')
-    model   = module.model.eval().to(device)
-    orig_sr = getattr(module, 'orig_sr', cfg.get('input', {}).get('sr', 24000))
-    return model, cfg, orig_sr
+    model     = module.model.eval().to(device)
+    tpit_loss = module.tpit_loss.eval().to(device)
+    orig_sr   = getattr(module, 'orig_sr', cfg.get('input', {}).get('sr', 24000))
+    return model, cfg, orig_sr, tpit_loss
 
 
 def load_standalone_model(cfg_path: Path, ckpt_path: Path,
@@ -369,12 +370,21 @@ def load_standalone_model(cfg_path: Path, ckpt_path: Path,
 
 def run_inference(model: nn.Module, loader, device: torch.device,
                   orig_sr: int, hop_length: int,
-                  is_nas: bool, model_name: str) -> Tuple[
+                  is_nas: bool, model_name: str,
+                  tpit_loss: Optional[nn.Module] = None) -> Tuple[
                       List[np.ndarray], List[np.ndarray], List[np.ndarray], int]:
     """
     Run forward pass, return (doa_list, target_list, act_logits_list, n_frames).
     All tensors moved to CPU numpy. act_logits stored for secondary diagnostics only.
+    For NAS-SELD models with tpit_loss provided, doa predictions are PIT-aligned
+    (via tPITLoss.last_best_perm) before being stored.
     """
+    alignment = 'PIT-aligned' if (is_nas and tpit_loss is not None) else 'raw/unmatched'
+    print(f'  DOA oracle alignment: {alignment}')
+    if alignment == 'raw/unmatched' and is_nas:
+        print('  WARNING: DOA oracle metrics are computed without PIT alignment '
+              'and may be unreliable for tPIT models.')
+
     doa_list, tgt_list, act_list = [], [], []
     n_frames = 0
 
@@ -389,10 +399,29 @@ def run_inference(model: nn.Module, loader, device: torch.device,
                 act_logits, doa_tanh = model(x, orig_sr=orig_sr)
 
             T = min(doa_tanh.shape[1], target.shape[1])
-            doa_list.append(doa_tanh[:, :T].cpu().numpy())      # (B, T, N, C, 3)
-            tgt_list.append(target[:, :T].cpu().numpy())        # (B, T, N, C, 3)
-            act_list.append(act_logits[:, :T].cpu().numpy())    # (B, T, N, C)
-            n_frames += doa_tanh.shape[0] * T
+            act_t = act_logits[:, :T]
+            doa_t = doa_tanh[:, :T]
+            tgt_t = target[:, :T]
+
+            # PIT-align predicted DOA tracks to target tracks using tPITLoss permutation
+            if is_nas and tpit_loss is not None:
+                tpit_loss(act_t, doa_t, tgt_t)        # sets tpit_loss.last_best_perm
+                perm = tpit_loss.last_best_perm        # (B*T*C, N)
+                B_, T_, N_, C_, _ = doa_t.shape
+                # Flatten to tPITLoss internal layout: (B*T*C, N, 3)
+                doa_flat = doa_t.permute(0, 1, 3, 2, 4).reshape(B_ * T_ * C_, N_, 3)
+                doa_aligned = torch.gather(
+                    doa_flat,
+                    1,
+                    perm.unsqueeze(-1).expand(-1, -1, 3),
+                )  # (B*T*C, N, 3)
+                # Restore to (B, T, N, C, 3)
+                doa_t = doa_aligned.reshape(B_, T_, C_, N_, 3).permute(0, 1, 3, 2, 4)
+
+            doa_list.append(doa_t.cpu().numpy())         # (B, T, N, C, 3) — aligned
+            tgt_list.append(tgt_t.cpu().numpy())         # (B, T, N, C, 3)
+            act_list.append(act_t.cpu().numpy())         # (B, T, N, C)
+            n_frames += act_t.shape[0] * T
 
     return doa_list, tgt_list, act_list, n_frames
 
@@ -1255,7 +1284,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument('--seed',           type=int,   default=2)
     p.add_argument('--batch-size',     type=int,   default=8)
     p.add_argument('--num-workers',    type=int,   default=4)
-    p.add_argument('--device',         default='cpu')
+    p.add_argument('--device',         default='auto',
+                   choices=['auto', 'cpu', 'cuda', 'mps'],
+                   help='Compute device: auto | cpu | cuda | mps')
     # Models
     p.add_argument('--nas-config',      type=Path, default=None)
     p.add_argument('--nas-checkpoint',  type=Path, default=None)
@@ -1280,12 +1311,20 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    device = torch.device(args.device if torch.backends.mps.is_available()
-                          or args.device not in ('mps',) else 'cpu')
-    try:
-        device = torch.device(args.device)
-    except Exception:
-        device = torch.device('cpu')
+    if args.device == 'auto':
+        if torch.cuda.is_available():
+            args.device = 'cuda'
+        elif torch.backends.mps.is_available():
+            args.device = 'mps'
+        else:
+            args.device = 'cpu'
+    if args.device == 'cuda' and not torch.cuda.is_available():
+        warnings.warn('CUDA requested but not available. Falling back to CPU.')
+        args.device = 'cpu'
+    if args.device == 'mps' and not torch.backends.mps.is_available():
+        warnings.warn('MPS requested but not available. Falling back to CPU.')
+        args.device = 'cpu'
+    device = torch.device(args.device)
 
     print(_SEP)
     print('DOA ORACLE DIAGNOSTIC TEST')
@@ -1326,6 +1365,7 @@ def main() -> None:
     print(f'  zero norm thresholds:{args.zero_norm_thresholds}')
     print(f'  static threshold:    {args.static_thresh_deg}°')
     print(f'  moving threshold:    {args.moving_thresh_deg}°')
+    print(f'\nDevice:           {device}')
     print(f'\nOutput directory: {args.output_dir}')
     print(f'\n{_SEP}')
 
@@ -1350,9 +1390,10 @@ def main() -> None:
 
         try:
             if is_nas:
-                model, cfg, orig_sr = load_nas_model(cfg_path, ckpt_path, device)
+                model, cfg, orig_sr, tpit_loss = load_nas_model(cfg_path, ckpt_path, device)
             else:
                 model, cfg, orig_sr = load_standalone_model(cfg_path, ckpt_path, device)
+                tpit_loss = None
         except Exception as exc:
             print(f'  ERROR loading {logical_name}: {exc}')
             import traceback; traceback.print_exc()
@@ -1406,7 +1447,7 @@ def main() -> None:
               f'(windowed={windowed}, batch_size={bs})…')
         try:
             doa_list, tgt_list, act_list, n_frames = run_inference(
-                model, loader, device, orig_sr, hop, is_nas, logical_name)
+                model, loader, device, orig_sr, hop, is_nas, logical_name, tpit_loss)
         except Exception as exc:
             print(f'  ERROR during inference: {exc}')
             import traceback; traceback.print_exc()

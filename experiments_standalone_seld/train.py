@@ -84,6 +84,7 @@ except ImportError:
 _ORIG_SR = {
     'STARSS23':          24000,
     'TAU-NIGENS2021':    24000,
+    'TAU-NIGENS2020':    24000,
     'TAU2019':           24000,
     'BalancedSTARSS23':  24000,
 }
@@ -112,6 +113,21 @@ class StandaloneSELDModule(L.LightningModule):
         self.orig_sr = _ORIG_SR.get(dataset_mode, 24000)
         self.model   = StandaloneSELDModel(cfg)
 
+        # ── Metrics config (must precede SELDMetrics instantiation) ──────
+        metrics_cfg     = cfg.get('metrics', {})
+        self.act_thresh = float(metrics_cfg.get('act_thresh', 0.5))
+        self._compute_doa_oracle_in_test = bool(
+            metrics_cfg.get('compute_doa_oracle_in_training_test', False)
+        )
+        self._compute_sed_eval_in_test = bool(
+            metrics_cfg.get('compute_sed_eval_in_training_test', False)
+        )
+
+        # ── SED pos_weight config ─────────────────────────────────────────
+        self._use_sed_pos_weight = bool(train_cfg.get('use_sed_pos_weight', False))
+        self._pos_weight_max     = float(train_cfg.get('pos_weight_max', 20.0))
+        self._pos_weight_target  = str(train_cfg.get('pos_weight_target', 'spatial_sed'))
+
         # ── DOA loss config ───────────────────────────────────────────────
         doa_loss_cfg = train_cfg.get('doa_loss', None)
         beta_sed     = float(train_cfg.get('beta_sed', 0.6))
@@ -119,16 +135,13 @@ class StandaloneSELDModule(L.LightningModule):
         self.tpit_loss = tPITLoss(
             N=N, beta=beta_sed,
             focal_gamma=focal_gamma, doa_loss_cfg=doa_loss_cfg,
+            # pos_weight injected lazily in on_fit_start() when use_sed_pos_weight=true
         )
 
-        self.metrics_val     = SELDMetrics(angle_thresh=angle_thresh)
-        self.metrics_starss  = SELDMetrics(angle_thresh=angle_thresh)
-        self.metrics_tau     = SELDMetrics(angle_thresh=angle_thresh)
-        self.metrics_tau2019 = SELDMetrics(angle_thresh=angle_thresh)
-
-        # ── Metrics config ────────────────────────────────────────────────
-        metrics_cfg     = cfg.get('metrics', {})
-        self.act_thresh = float(metrics_cfg.get('act_thresh', 0.5))
+        self.metrics_val     = SELDMetrics(angle_thresh=angle_thresh, act_thresh=self.act_thresh)
+        self.metrics_starss  = SELDMetrics(angle_thresh=angle_thresh, act_thresh=self.act_thresh)
+        self.metrics_tau     = SELDMetrics(angle_thresh=angle_thresh, act_thresh=self.act_thresh)
+        self.metrics_tau2019 = SELDMetrics(angle_thresh=angle_thresh, act_thresh=self.act_thresh)
 
         # ── sed_eval availability ─────────────────────────────────────────
         self._sed_eval_available = _SED_EVAL_AVAILABLE
@@ -190,6 +203,13 @@ class StandaloneSELDModule(L.LightningModule):
         print(f'    sed_eval SED:        test-only{"" if self._sed_eval_available else " (sed_eval not installed — will be skipped)"}')
         print(f'    DOA oracle:          test-only')
         print(f'    act_thresh:          {self.act_thresh}')
+        print(f'    doa_oracle (test):   {"enabled" if self._compute_doa_oracle_in_test else "disabled — use doa_oracle_test.py"}')
+        print(f'    sed_eval (test):     {"enabled" if self._compute_sed_eval_in_test   else "disabled — use activation_test.py"}')
+        print(f'    use_sed_pos_weight:  {self._use_sed_pos_weight}')
+        if self._use_sed_pos_weight:
+            print(f'    pos_weight_max:      {self._pos_weight_max}')
+            print(f'    pos_weight_target:   {self._pos_weight_target}')
+            print(f'    (pos_weight computed from training targets at fit start)')
         print()
         print('  Retro-compatibility:')
         print(f'    old config detected: {"yes" if doa_loss_cfg is None else "no"}')
@@ -339,21 +359,21 @@ class StandaloneSELDModule(L.LightningModule):
         tgt        = tgt[:, :T]
 
         # Run loss with no_grad to populate last_best_perm for DOA oracle alignment
-        with torch.no_grad():
-            self.tpit_loss(act_logits, doa_tanh, tgt)
+        if self._compute_doa_oracle_in_test:
+            with torch.no_grad():
+                self.tpit_loss(act_logits, doa_tanh, tgt)
+            B, T2, N, C, _ = doa_tanh.shape
+            pred_aligned = align_doa_to_target(
+                doa_tanh, self.tpit_loss.last_best_perm, B, T2, N, C
+            )
+            p, t, cls = accumulate_active_doa(
+                pred_aligned, tgt, active_eps=self.tpit_loss.doa_active_eps,
+            )
+            self._test_doa_pred[dataloader_idx].append(p)
+            self._test_doa_tgt[dataloader_idx].append(t)
+            self._test_doa_cls[dataloader_idx].append(cls)
 
-        B, T2, N, C, _ = doa_tanh.shape
-        pred_aligned = align_doa_to_target(
-            doa_tanh, self.tpit_loss.last_best_perm, B, T2, N, C
-        )
-        p, t, cls = accumulate_active_doa(
-            pred_aligned, tgt, active_eps=self.tpit_loss.doa_active_eps,
-        )
-        self._test_doa_pred[dataloader_idx].append(p)
-        self._test_doa_tgt[dataloader_idx].append(t)
-        self._test_doa_cls[dataloader_idx].append(cls)
-
-        if self._sed_eval_available:
+        if self._compute_sed_eval_in_test and self._sed_eval_available:
             self._test_sed_logits[dataloader_idx].append(act_logits.detach().cpu().numpy())
             self._test_sed_tgt[dataloader_idx].append(tgt.detach().cpu().numpy())
 
@@ -378,7 +398,7 @@ class StandaloneSELDModule(L.LightningModule):
             sed_per_src:    Dict[int, dict] = {}
             doa_pc_per_src: Dict[int, list] = {}
             for idx, src_label in _SRC.items():
-                if self._test_doa_pred[idx]:
+                if self._compute_doa_oracle_in_test and self._test_doa_pred[idx]:
                     pred_all = np.concatenate(self._test_doa_pred[idx], axis=0)
                     tgt_all  = np.concatenate(self._test_doa_tgt[idx],  axis=0)
                     cls_all  = np.concatenate(self._test_doa_cls[idx],  axis=0)
@@ -395,7 +415,7 @@ class StandaloneSELDModule(L.LightningModule):
                 self._test_doa_pred[idx].clear()
                 self._test_doa_tgt[idx].clear()
                 self._test_doa_cls[idx].clear()
-                if self._sed_eval_available and self._test_sed_logits[idx]:
+                if self._compute_sed_eval_in_test and self._sed_eval_available and self._test_sed_logits[idx]:
                     sed_m = self._compute_sed_eval_metrics(
                         self._test_sed_logits[idx], self._test_sed_tgt[idx]
                     )
@@ -448,7 +468,7 @@ class StandaloneSELDModule(L.LightningModule):
             # ── Single-dataset test ───────────────────────────────────────
             doa_results: dict = {}
             doa_pc_rows: list = []
-            if self._test_doa_pred[0]:
+            if self._compute_doa_oracle_in_test and self._test_doa_pred[0]:
                 pred_all = np.concatenate(self._test_doa_pred[0], axis=0)
                 tgt_all  = np.concatenate(self._test_doa_tgt[0],  axis=0)
                 cls_all  = np.concatenate(self._test_doa_cls[0],  axis=0)
@@ -464,7 +484,7 @@ class StandaloneSELDModule(L.LightningModule):
             self._test_doa_cls[0].clear()
 
             sed_results: dict = {}
-            if self._sed_eval_available and self._test_sed_logits[0]:
+            if self._compute_sed_eval_in_test and self._sed_eval_available and self._test_sed_logits[0]:
                 sed_results = self._compute_sed_eval_metrics(
                     self._test_sed_logits[0], self._test_sed_tgt[0]
                 )
@@ -489,7 +509,7 @@ class StandaloneSELDModule(L.LightningModule):
                     epoch='test', split=prefix,
                     seld_results=results, doa_results=doa_results, sed_results=sed_results,
                 )
-                if doa_pc_rows:
+                if self._compute_doa_oracle_in_test and doa_pc_rows:
                     self._flush_doa_per_class_csv('test', prefix, doa_pc_rows)
             self._print_val_summary(prefix, results, doa_results, sed_results)
 
@@ -539,6 +559,76 @@ class StandaloneSELDModule(L.LightningModule):
                 'optimizer':    optimizer,
                 'lr_scheduler': {'scheduler': scheduler, 'interval': 'epoch', 'frequency': 1},
             }
+
+    # ------------------------------------------------------------------
+    # Fit hooks
+    # ------------------------------------------------------------------
+
+    def on_fit_start(self) -> None:
+        """Compute and inject SED pos_weight into tPITLoss before training begins."""
+        if not self._use_sed_pos_weight:
+            print('[StandaloneSELDModule] SED training without pos_weight '
+                  '(use_sed_pos_weight=false).')
+            return
+
+        print(
+            f'[StandaloneSELDModule] Computing SED pos_weight from training set '
+            f'(n_classes={self.n_classes}, TARGET_THRESH={TARGET_THRESH}, '
+            f'pos_weight_max={self._pos_weight_max}) ...'
+        )
+
+        dm       = self.trainer.datamodule
+        train_ds = dm._train_ds
+        windowed = getattr(train_ds, 'windowed', True)
+
+        from datasets.utils import SELDDataset as _SELDDataset
+        collate_fn = None if windowed else _SELDDataset.collate_fn
+
+        scan_loader = torch.utils.data.DataLoader(
+            train_ds,
+            batch_size=32,
+            shuffle=False,
+            num_workers=0,
+            collate_fn=collate_fn,
+        )
+
+        C          = self.n_classes
+        pos_counts = torch.zeros(C, dtype=torch.float64)
+        neg_counts = torch.zeros(C, dtype=torch.float64)
+
+        with torch.no_grad():
+            for batch in scan_loader:
+                tgt = batch[1].float()          # (B, T, N, C, 3)
+                active = (tgt.norm(dim=-1) > TARGET_THRESH).any(dim=2)  # (B, T, C)
+                pos_counts += active.float().sum(dim=(0, 1)).double()
+                neg_counts += (~active).float().sum(dim=(0, 1)).double()
+
+        zero_pos = [c for c in range(C) if pos_counts[c].item() == 0]
+        if zero_pos:
+            print(
+                f'[StandaloneSELDModule] WARNING: zero positive training frames for '
+                f'class(es) {zero_pos} — pos_weight set to {self._pos_weight_max}'
+            )
+
+        pw = torch.zeros(C, dtype=torch.float32)
+        for c in range(C):
+            p = pos_counts[c].item()
+            n = neg_counts[c].item()
+            pw[c] = self._pos_weight_max if p == 0 else float(min(n / p, self._pos_weight_max))
+
+        print(f'[StandaloneSELDModule] SED pos_weight ({C} classes):')
+        for c in range(C):
+            print(
+                f'  class {c:2d}: pos={int(pos_counts[c]):8d}  '
+                f'neg={int(neg_counts[c]):8d}  pos_weight={pw[c]:.3f}'
+            )
+        print(
+            f'  summary: min={pw.min():.3f}  '
+            f'median={pw.median():.3f}  '
+            f'max={pw.max():.3f}'
+        )
+
+        self.tpit_loss.register_buffer('pos_weight', pw.to(self.device))
 
     # ------------------------------------------------------------------
     # Private helpers

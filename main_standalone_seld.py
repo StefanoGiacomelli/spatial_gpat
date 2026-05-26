@@ -401,6 +401,8 @@ def _build_cfg(exp_yaml_path: Path, args, starss_root: Path, tau_root: Path,
         data_cfg['root_path'] = str(starss_root)
     elif dataset_mode == 'TAU-NIGENS2021':
         data_cfg['root_path'] = str(tau_root)
+    elif dataset_mode == 'TAU-NIGENS2020':
+        data_cfg['root_path'] = str(_ROOT / 'data' / 'TAU-NIGENS2020')
     elif dataset_mode == 'TAU2019':
         data_cfg['root_path'] = str(tau2019_root)
     elif dataset_mode == 'BalancedSTARSS23':
@@ -409,7 +411,7 @@ def _build_cfg(exp_yaml_path: Path, args, starss_root: Path, tau_root: Path,
         data_cfg['tau2019_root']  = str(tau2019_root)
     else:
         raise ValueError(f'Unknown dataset_mode: {dataset_mode!r}. '
-                         'Expected STARSS23 | TAU-NIGENS2021 | TAU2019 | BalancedSTARSS23.')
+                         'Expected STARSS23 | TAU-NIGENS2021 | TAU-NIGENS2020 | TAU2019 | BalancedSTARSS23.')
 
     # 4. semantic.dataset — needed by SELDDataModule / BalancedSELDDataModule
     cfg.setdefault('semantic', {})['dataset'] = dataset_mode

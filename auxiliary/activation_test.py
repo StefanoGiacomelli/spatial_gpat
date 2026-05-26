@@ -115,6 +115,8 @@ class InferenceCache:
         return self.hop_length / self.orig_sr
 
     def build_aggregates(self) -> None:
+        if self.probs_flat is not None and self.tgt_flat is not None:
+            return  # already populated on device during inference
         probs, tgts = [], []
         for logits, tgt in zip(self.act_logits_list, self.targets_list):
             T = min(logits.shape[1], tgt.shape[1])
@@ -316,9 +318,13 @@ def run_inference(model: nn.Module, loader, device: torch.device,
                   is_nas: bool, model_name: str) -> InferenceCache:
     """
     Run forward passes over *loader* and cache logits + targets on CPU.
+    Sigmoid and activity norm are computed on device per batch; the resulting
+    float32/bool arrays are immediately moved to CPU to free GPU memory.
     Returns InferenceCache with aggregates pre-built.
     """
     act_list, doa_list, tgt_list = [], [], []
+    probs_parts: List[np.ndarray] = []
+    tgt_activity_parts: List[np.ndarray] = []
     n_frames_total = 0
 
     model.eval()
@@ -332,10 +338,18 @@ def run_inference(model: nn.Module, loader, device: torch.device,
                 act_logits, doa_tanh = model(x, orig_sr=orig_sr)
 
             T = min(act_logits.shape[1], target.shape[1])
-            act_list.append(act_logits[:, :T].cpu())
+            act_t = act_logits[:, :T]
+            tgt_t = target[:, :T]
+
+            # Compute probability and activity on device before moving to CPU
+            probs_parts.append(torch.sigmoid(act_t).cpu().numpy().ravel().astype(np.float32))
+            tgt_activity_parts.append(
+                (tgt_t.norm(dim=-1) > _TGT_THRESH).cpu().numpy().ravel())
+
+            act_list.append(act_t.cpu())
             doa_list.append(doa_tanh[:, :T].cpu())
-            tgt_list.append(target[:, :T].cpu())
-            n_frames_total += act_logits.shape[0] * T
+            tgt_list.append(tgt_t.cpu())
+            n_frames_total += act_t.shape[0] * T
 
     if not act_list:
         raise RuntimeError(f"No batches processed for model {model_name!r}.")
@@ -355,7 +369,8 @@ def run_inference(model: nn.Module, loader, device: torch.device,
         hop_length=hop_length,
         model_name=model_name,
     )
-    cache.build_aggregates()
+    cache.probs_flat = np.concatenate(probs_parts)
+    cache.tgt_flat   = np.concatenate(tgt_activity_parts).astype(bool)
     return cache
 
 
@@ -1112,8 +1127,9 @@ def parse_args() -> argparse.Namespace:
     # Runtime
     p.add_argument('--batch-size',   type=int, default=4)
     p.add_argument('--num-workers',  type=int, default=0)
-    p.add_argument('--device',       default='cpu',
-                   help='Compute device: cpu | cuda | mps')
+    p.add_argument('--device',       default='auto',
+                   choices=['auto', 'cpu', 'cuda', 'mps'],
+                   help='Compute device: auto | cpu | cuda | mps')
     p.add_argument('--output-dir', type=Path, default=Path('./activation_test_outputs'))
     return p.parse_args()
 
@@ -1123,6 +1139,13 @@ def main() -> None:
     args.thresholds = sorted(args.thresholds)
 
     # ── Device ───────────────────────────────────────────────────────────────
+    if args.device == 'auto':
+        if torch.cuda.is_available():
+            args.device = 'cuda'
+        elif torch.backends.mps.is_available():
+            args.device = 'mps'
+        else:
+            args.device = 'cpu'
     if args.device == 'cuda' and not torch.cuda.is_available():
         warnings.warn('CUDA requested but not available. Falling back to CPU.')
         args.device = 'cpu'
