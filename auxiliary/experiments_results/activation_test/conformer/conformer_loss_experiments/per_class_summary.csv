@@ -1,0 +1,14 @@
+dataset,split,pool_size,model_name,threshold,class_id,class_name,tgt_active_count,pred_active_count,pred_target_ratio,F1,precision,recall,TP,FP,FN
+balanced_starss23,test,0,standalone_conformer,0.300000,0,Female speech,1044489,1090514,1.044065,0.233113,0.212821,0.257683,276605,1023105,796828
+balanced_starss23,test,0,standalone_conformer,0.300000,1,Male speech,1486350,1542848,1.038011,0.260262,0.228674,0.301974,475394,1603518,1098892
+balanced_starss23,test,0,standalone_conformer,0.300000,2,Clapping,22123,49024,2.215974,0.122952,0.091960,0.185452,5219,51534,22923
+balanced_starss23,test,0,standalone_conformer,0.300000,3,Telephone,35953,29965,0.833449,0.064568,0.069746,0.060106,2161,28823,33792
+balanced_starss23,test,0,standalone_conformer,0.300000,4,Laughter,141315,99844,0.706535,0.083409,0.080720,0.086283,13915,158471,147357
+balanced_starss23,test,0,standalone_conformer,0.300000,5,Domestic sounds,627966,754792,1.201963,0.057323,0.051945,0.063945,40621,741382,594632
+balanced_starss23,test,0,standalone_conformer,0.300000,6,"Walk, footsteps",176889,30120,0.170276,0.040129,0.137977,0.023479,4249,26546,176724
+balanced_starss23,test,0,standalone_conformer,0.300000,7,Door open/close,21429,24108,1.125017,0.282814,0.241108,0.341966,7328,23065,14101
+balanced_starss23,test,0,standalone_conformer,0.300000,8,Music,1155060,985020,0.852787,0.097585,0.101077,0.094326,116863,1039310,1122061
+balanced_starss23,test,0,standalone_conformer,0.300000,9,Musical instrument,818413,127817,0.156177,0.037572,0.147593,0.021526,22173,128058,1007884
+balanced_starss23,test,0,standalone_conformer,0.300000,10,Water tap,101696,13944,0.137115,0.043135,0.177356,0.024554,2497,11582,99199
+balanced_starss23,test,0,standalone_conformer,0.300000,11,Bell,45799,32292,0.705081,0.000000,0.000000,0.000000,0,33355,45799
+balanced_starss23,test,0,standalone_conformer,0.300000,12,Knock,1717,1452,0.845661,0.000000,0.000000,0.000000,0,1566,1717
