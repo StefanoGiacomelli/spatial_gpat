@@ -6,16 +6,15 @@ pandas
 scipy
 scikit-learn
 soundfile
-# torch
-# torchaudio
-# torchlibrosa
-# torchmetrics
-# torchinfo
-# lightning
+torch
+torchaudio
+torchlibrosa
+torchmetrics
+torchinfo
+lightning
 tensorboard
 wandb
 python-dotenv
 sed_eval
 matplotlib
 seaborn
-
