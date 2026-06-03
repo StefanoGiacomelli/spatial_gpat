@@ -591,6 +591,25 @@ class NASLightningModule(L.LightningModule):
         }
 
     # ------------------------------------------------------------------
+    # Checkpoint hooks
+    # ------------------------------------------------------------------
+
+    def on_load_checkpoint(self, checkpoint: dict) -> None:
+        """Pre-register tpit_loss.pos_weight buffer if present in checkpoint.
+
+        Checkpoints saved after on_fit_start() with use_sed_pos_weight=True
+        contain 'tpit_loss.pos_weight' in state_dict. Without this hook,
+        load_from_checkpoint(strict=True) raises 'unexpected key' because the
+        buffer is registered dynamically (not in __init__). Pre-registering a
+        zero placeholder of the correct shape lets load_state_dict fill it in.
+        Checkpoints without pos_weight are unaffected.
+        """
+        pw_key = 'tpit_loss.pos_weight'
+        state = checkpoint.get('state_dict', {})
+        if pw_key in state:
+            pw = state[pw_key]
+            self.tpit_loss.register_buffer('pos_weight', torch.zeros_like(pw))
+
     # Fit hooks
     # ------------------------------------------------------------------
 

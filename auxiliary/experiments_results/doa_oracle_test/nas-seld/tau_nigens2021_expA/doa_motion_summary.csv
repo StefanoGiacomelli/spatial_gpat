@@ -1,0 +1,4 @@
+dataset,split,model_name,motion_type,n_events,n_slots,mean_AE,median_AE,p90_AE,acc_20deg,pred_norm_median,zero_norm_lt01
+tau_nigens,test,nas_seld_x1,static,15954,1882738,23.531213,23.237596,28.324527,0.530436,0.863311,0.001178
+tau_nigens,test,nas_seld_x1,quasi_static,4042,424077,20.622387,20.243393,26.290608,0.593524,0.876743,0.000486
+tau_nigens,test,nas_seld_x1,moving,2517,1047663,24.181686,22.954717,36.776893,0.507015,0.825006,0.000497

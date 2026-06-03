@@ -1,0 +1,134 @@
+{
+  "run_config": {
+    "dataset": "starss23",
+    "split": "test",
+    "pool_size": 0,
+    "sample_policy": "random",
+    "seed": 2,
+    "device": "mps",
+    "angle_thresholds": [
+      10,
+      20,
+      30,
+      45,
+      90
+    ],
+    "zero_norm_thresholds": [
+      0.05,
+      0.1,
+      0.2,
+      0.5
+    ],
+    "static_thresh_deg": 5.0,
+    "moving_thresh_deg": 20.0
+  },
+  "models": {
+    "standalone_conformer": {
+      "global_metrics": {
+        "n_active": 6128934,
+        "n_total_slots": 182468286,
+        "active_pct": 3.3589036946398454,
+        "ae_stats": {
+          "mean": 88.64812469482422,
+          "median": 88.74330139160156,
+          "std": 41.00638961791992,
+          "min": 0.06255725026130676,
+          "p25": 56.209747314453125,
+          "p75": 120.7454833984375,
+          "p90": 144.5166015625,
+          "p95": 155.30308532714844,
+          "max": 179.97201538085938
+        },
+        "acc_10deg": 0.011113025527767145,
+        "acc_20deg": 0.0397941958585294,
+        "acc_30deg": 0.08698788402681445,
+        "acc_45deg": 0.17501200045554416,
+        "acc_90deg": 0.5100552559384716,
+        "pred_norm_all": {
+          "mean": 0.027679037302732468,
+          "median": 0.004610398784279823,
+          "p90": 0.014355883002281189,
+          "max": 1.2313990592956543
+        },
+        "pred_norm_active": {
+          "mean": 0.1002446785569191,
+          "median": 0.006067216396331787,
+          "p90": 0.515687882900238,
+          "max": 1.2313990592956543
+        },
+        "pred_norm_inactive": {
+          "mean": 0.025156915187835693,
+          "median": 0.004568817093968391,
+          "p90": 0.014008311554789543,
+          "max": 1.2311651706695557
+        },
+        "target_norm_active": {
+          "mean": 1.0,
+          "median": 1.0,
+          "min": 0.9999999403953552,
+          "max": 1.0
+        },
+        "zero_norm_active_lt_0.05": 0.8517608445449079,
+        "zero_norm_active_lt_0.10": 0.8620161352692002,
+        "zero_norm_active_lt_0.20": 0.8722839893527977,
+        "zero_norm_active_lt_0.50": 0.8984099029292859,
+        "zero_norm_inactive_lt_0.05": 0.9659920719227776,
+        "zero_norm_inactive_lt_0.10": 0.9700501394606463,
+        "zero_norm_inactive_lt_0.20": 0.973251602966081,
+        "zero_norm_inactive_lt_0.50": 0.9795542687488157
+      },
+      "coord_check": {},
+      "motion_summary": {
+        "static": {
+          "n_events": 14759,
+          "n_slots": 4986240,
+          "mean_AE": 89.1919772416743,
+          "median_AE": 89.24505605343211,
+          "p90_AE": 114.50800888896498,
+          "acc_20deg": 0.03819257104063621,
+          "pred_norm_median": 0.005636189598590136,
+          "zero_norm_lt01": 0.9279142698740889
+        },
+        "quasi_static": {
+          "n_events": 1195,
+          "n_slots": 478983,
+          "mean_AE": 89.29226493037396,
+          "median_AE": 89.46738778397628,
+          "p90_AE": 113.92239870965231,
+          "acc_20deg": 0.03574685872833342,
+          "pred_norm_median": 0.006284974981099367,
+          "zero_norm_lt01": 0.8491399818343985
+        },
+        "moving": {
+          "n_events": 1346,
+          "n_slots": 663477,
+          "mean_AE": 90.3449947136118,
+          "median_AE": 91.03482886338482,
+          "p90_AE": 122.96010331554895,
+          "acc_20deg": 0.03871731271118886,
+          "pred_norm_median": 0.005044777877628803,
+          "zero_norm_lt01": 0.8720954234385105
+        },
+        "interpretation": "Localization issue is not limited to moving trajectories."
+      },
+      "temporal_smoothness": {
+        "target_velocity": {
+          "mean": 0.06764686852693558,
+          "median": 0.0,
+          "p90": 0.0
+        },
+        "predicted_velocity": {
+          "mean": 7.622269153594971,
+          "median": 4.781924247741699,
+          "p90": 16.222919464111328
+        },
+        "jitter_ratio": {
+          "mean": 7480826.0,
+          "median": 4672482.5,
+          "p90": 16057463.0
+        },
+        "interpretation": "HIGH temporal jitter: predicted DOA changes much faster than target."
+      }
+    }
+  }
+}

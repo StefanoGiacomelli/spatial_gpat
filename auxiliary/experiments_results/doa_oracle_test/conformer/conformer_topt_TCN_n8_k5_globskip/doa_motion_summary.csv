@@ -1,0 +1,4 @@
+dataset,split,model_name,motion_type,n_events,n_slots,mean_AE,median_AE,p90_AE,acc_20deg,pred_norm_median,zero_norm_lt01
+starss23,test,standalone_conformer,static,14759,4986240,84.331649,84.060130,103.763180,0.044972,0.020455,0.916381
+starss23,test,standalone_conformer,quasi_static,1195,478983,83.534831,83.062320,104.315224,0.035258,0.019828,0.951857
+starss23,test,standalone_conformer,moving,1346,663477,78.145827,77.025514,106.187554,0.037762,0.019112,0.998443
