@@ -3,7 +3,8 @@
 !/data/README.md
 
 /logs/
-/runs/
+/runs/*
+!/runs/README.md
 
 *.venv/
 __pycache__/
