@@ -3,7 +3,7 @@ utils/doa_metrics.py
 ====================
 DOA oracle evaluation utilities for SELD training loops.
 
-Functions extracted and adapted from auxiliary/doa_oracle_test.py so that
+Functions extracted and adapted from analysis/diagnostics/doa_oracle_test.py so that
 training scripts can compute DOA oracle metrics without duplicating logic.
 
 Key design principle

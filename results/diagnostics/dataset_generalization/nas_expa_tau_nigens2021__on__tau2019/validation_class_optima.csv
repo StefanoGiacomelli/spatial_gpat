@@ -1,0 +1,13 @@
+split,class_idx,class_name,target_support,best_sed_threshold,best_sed_f1,best_seld_threshold,best_seld_angle_deg,best_seld_f1,best_sed_precision,best_sed_recall,best_seld_score,best_seld_le,best_seld_lr
+val,0,alarm,0,nan,nan,nan,nan,nan,,,,,
+val,1,baby_cry,0,nan,nan,nan,nan,nan,,,,,
+val,2,crash,0,nan,nan,nan,nan,nan,,,,,
+val,3,dog_bark,0,nan,nan,nan,nan,nan,,,,,
+val,4,female_scream,0,nan,nan,nan,nan,nan,,,,,
+val,5,female_speech,0,nan,nan,nan,nan,nan,,,,,
+val,6,footsteps,0,nan,nan,nan,nan,nan,,,,,
+val,7,knock,127612,0.5,0.7526889969772759,0.55,45,0.7032367890667031,0.7372257288848812,0.768814844998903,0.25922245,18.151442,0.6803573509419305
+val,8,male_scream,0,nan,nan,nan,nan,nan,,,,,
+val,9,male_speech,0,nan,nan,nan,nan,nan,,,,,
+val,10,telephone,279122,0.3,0.9575150958611992,0.4,45,0.896704391671054,0.9643927913391407,0.9507348041358259,0.10308244,14.539692,0.8858709690931812
+val,11,piano,0,nan,nan,nan,nan,nan,,,,,

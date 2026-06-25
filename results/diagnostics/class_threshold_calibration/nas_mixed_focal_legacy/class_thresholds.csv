@@ -1,0 +1,14 @@
+class_id,class_name,threshold,calibration_positive_frames,used_fallback
+0,Female speech,0.45,306050,False
+1,Male speech,0.5,515808,False
+2,Clapping,0.45,14415,False
+3,Telephone,0.35,15335,False
+4,Laughter,0.45,28953,False
+5,Domestic sounds,0.45,399112,False
+6,"Walk, footsteps",0.5,20570,False
+7,Door open/close,0.5,3525,False
+8,Music,0.5,239742,False
+9,Musical instrument,0.5,7519,False
+10,Water tap,0.35,6005,False
+11,Bell,0.45,0,True
+12,Knock,0.35,600,False

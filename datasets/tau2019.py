@@ -34,6 +34,11 @@ References
 ----------
 A. Politis et al., "A Dataset of Reverberant Spatial Sound Scenes with Moving
 Sources for Sound Event Localization and Detection," DCASE2019 Workshop.
+
+Author
+------
+Stefano Giacomelli, Ph.D. candidate
+DISIM Department — University of L'Aquila
 """
 
 from __future__ import annotations

@@ -1,0 +1,140 @@
+{
+  "source_space": "starss23",
+  "destination_space": "starss23",
+  "mapped_source_classes": 13,
+  "source_classes": 13,
+  "covered_destination_classes": 13,
+  "destination_classes": 13,
+  "rows": [
+    {
+      "source_index": 0,
+      "source_class": "female_speech",
+      "destination_indices": [
+        0
+      ],
+      "destination_classes": [
+        "female_speech"
+      ]
+    },
+    {
+      "source_index": 1,
+      "source_class": "male_speech",
+      "destination_indices": [
+        1
+      ],
+      "destination_classes": [
+        "male_speech"
+      ]
+    },
+    {
+      "source_index": 2,
+      "source_class": "clapping",
+      "destination_indices": [
+        2
+      ],
+      "destination_classes": [
+        "clapping"
+      ]
+    },
+    {
+      "source_index": 3,
+      "source_class": "telephone",
+      "destination_indices": [
+        3
+      ],
+      "destination_classes": [
+        "telephone"
+      ]
+    },
+    {
+      "source_index": 4,
+      "source_class": "laughter",
+      "destination_indices": [
+        4
+      ],
+      "destination_classes": [
+        "laughter"
+      ]
+    },
+    {
+      "source_index": 5,
+      "source_class": "domestic_sounds",
+      "destination_indices": [
+        5
+      ],
+      "destination_classes": [
+        "domestic_sounds"
+      ]
+    },
+    {
+      "source_index": 6,
+      "source_class": "footsteps",
+      "destination_indices": [
+        6
+      ],
+      "destination_classes": [
+        "footsteps"
+      ]
+    },
+    {
+      "source_index": 7,
+      "source_class": "door",
+      "destination_indices": [
+        7
+      ],
+      "destination_classes": [
+        "door"
+      ]
+    },
+    {
+      "source_index": 8,
+      "source_class": "music",
+      "destination_indices": [
+        8
+      ],
+      "destination_classes": [
+        "music"
+      ]
+    },
+    {
+      "source_index": 9,
+      "source_class": "musical_instrument",
+      "destination_indices": [
+        9
+      ],
+      "destination_classes": [
+        "musical_instrument"
+      ]
+    },
+    {
+      "source_index": 10,
+      "source_class": "water_tap",
+      "destination_indices": [
+        10
+      ],
+      "destination_classes": [
+        "water_tap"
+      ]
+    },
+    {
+      "source_index": 11,
+      "source_class": "bell",
+      "destination_indices": [
+        11
+      ],
+      "destination_classes": [
+        "bell"
+      ]
+    },
+    {
+      "source_index": 12,
+      "source_class": "knock",
+      "destination_indices": [
+        12
+      ],
+      "destination_classes": [
+        "knock"
+      ]
+    }
+  ]
+}

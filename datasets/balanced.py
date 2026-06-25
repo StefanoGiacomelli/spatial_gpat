@@ -19,6 +19,11 @@ ProjectedSELDDataset
 
 BalancedSELDDataModule
     LightningDataModule for BalancedSTARSS23 training.
+
+Author
+------
+Stefano Giacomelli, Ph.D. candidate
+DISIM Department — University of L'Aquila
 """
 
 from __future__ import annotations

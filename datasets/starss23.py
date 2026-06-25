@@ -22,6 +22,11 @@ References
 ----------
 K. Shimada et al., "STARSS23: An Audio-Visual Dataset of Spatial Recordings
 of Real Scenes with Spatiotemporal Annotations of Sound Events," 2023.
+
+Author
+------
+Stefano Giacomelli, Ph.D. candidate
+DISIM Department — University of L'Aquila
 """
 
 from pathlib import Path

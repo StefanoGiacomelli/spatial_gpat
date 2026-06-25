@@ -1,0 +1,26 @@
+{
+  "models": {
+    "nas_expa_starss23": {
+      "config": "runs/at2seld_nas/loss_experiments/balanced_starss23_expA/checkpoints/expA_nas_seld_balanced_starss23/version_0/hparams.yaml",
+      "checkpoint": "runs/at2seld_nas/loss_experiments/balanced_starss23_expA/checkpoints/expA_nas_seld_balanced_starss23/34_0.3375.ckpt"
+    },
+    "nas_expa_tau2019": {
+      "config": "runs/at2seld_nas/loss_experiments/tau2019_expA/checkpoints/expA_nas_seld_tau2019/version_0/hparams.yaml",
+      "checkpoint": "runs/at2seld_nas/loss_experiments/tau2019_expA/checkpoints/expA_nas_seld_tau2019/39_0.0510.ckpt"
+    },
+    "nas_expa_tau_nigens2021": {
+      "config": "runs/at2seld_nas/loss_experiments/tau_nigens2021_expA/checkpoints/expA_nas_seld_tau_nigens2021/version_0/hparams.yaml",
+      "checkpoint": "runs/at2seld_nas/loss_experiments/tau_nigens2021_expA/checkpoints/expA_nas_seld_tau_nigens2021/27_0.5328.ckpt"
+    },
+    "nas_expa_tau_nigens2020": {
+      "config": "runs/at2seld_nas/loss_experiments/tau_nigens2020_expA/checkpoints/expA_nas_seld_tau_nigens2020/version_0/hparams.yaml",
+      "checkpoint": "runs/at2seld_nas/loss_experiments/tau_nigens2020_expA/checkpoints/expA_nas_seld_tau_nigens2020/35_0.5385.ckpt"
+    }
+  },
+  "datasets": {
+    "starss23": "data/STARSS23",
+    "tau_nigens2021": "data/TAU-NIGENS2021",
+    "tau_nigens2020": "data/TAU-NIGENS2020",
+    "tau2019": "data/TAU2019"
+  }
+}

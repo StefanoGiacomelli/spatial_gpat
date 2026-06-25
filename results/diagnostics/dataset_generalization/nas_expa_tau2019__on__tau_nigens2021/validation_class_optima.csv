@@ -1,0 +1,12 @@
+split,class_idx,class_name,target_support,best_sed_threshold,best_sed_f1,best_seld_threshold,best_seld_angle_deg,best_seld_f1,best_sed_precision,best_sed_recall,best_seld_score,best_seld_le,best_seld_lr
+val,0,clearthroat,0,nan,nan,nan,nan,nan,,,,,
+val,1,cough,0,nan,nan,nan,nan,nan,,,,,
+val,2,door,0,nan,nan,nan,nan,nan,,,,,
+val,3,drawer,0,nan,nan,nan,nan,nan,,,,,
+val,4,keyboard,0,nan,nan,nan,nan,nan,,,,,
+val,5,keys_drop,0,nan,nan,nan,nan,nan,,,,,
+val,6,knock,70542,0.3,0.18317674602450668,0.35,45,0.16917246630894828,0.19747926705346314,0.17080604462589663,0.6622469,16.021044,0.13542286864562955
+val,7,laughter,0,nan,nan,nan,nan,nan,,,,,
+val,8,page_turn,0,nan,nan,nan,nan,nan,,,,,
+val,9,telephone,238912,0.25,0.2959336089201283,0.25,45,0.14753130075930085,0.181964274379841,0.7919610567907849,1.6167718,18.94371,0.4767362041253683
+val,10,speech,121031,0.35,0.403564664861325,0.45,45,0.33982121670826004,0.43444957843090554,0.3767795027720171,0.55414134,14.911951,0.2632287812646073

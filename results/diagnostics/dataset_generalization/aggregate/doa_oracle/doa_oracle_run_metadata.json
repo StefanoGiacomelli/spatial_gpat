@@ -1,0 +1,23 @@
+{
+  "completed_pairs": 16,
+  "expected_pairs": 16,
+  "angle_thresholds_deg": [
+    5.0,
+    10.0,
+    15.0,
+    20.0,
+    30.0,
+    45.0,
+    90.0
+  ],
+  "zero_norm_thresholds": [
+    0.05,
+    0.1,
+    0.2,
+    0.5
+  ],
+  "activity_policy": "ground-truth oracle activity",
+  "primary_alignment": "DOA-only angular-cost oracle permutation",
+  "secondary_alignment": "checkpoint tPIT permutation",
+  "selection_policy": "no threshold calibration or test optimization"
+}

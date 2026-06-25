@@ -1,0 +1,36 @@
+{
+  "preset": "nas_expa",
+  "objective": "f1",
+  "selection_split": "val",
+  "global_threshold": 0.35,
+  "class_thresholds": {
+    "Female speech": 0.35,
+    "Male speech": 0.4,
+    "Clapping": 0.25,
+    "Telephone": 0.35,
+    "Laughter": 0.35,
+    "Domestic sounds": 0.3,
+    "Walk, footsteps": 0.35,
+    "Door open/close": 0.5,
+    "Music": 0.3,
+    "Musical instrument": 0.15,
+    "Water tap": 0.55,
+    "Bell": 0.35,
+    "Knock": 0.2
+  },
+  "test_oracle_thresholds": {
+    "Female speech": 0.25,
+    "Male speech": 0.3,
+    "Clapping": 0.45,
+    "Telephone": 0.4,
+    "Laughter": 0.3,
+    "Domestic sounds": 0.35,
+    "Walk, footsteps": 0.25,
+    "Door open/close": 0.4,
+    "Music": 0.25,
+    "Musical instrument": 0.05,
+    "Water tap": 0.5,
+    "Bell": 0.2,
+    "Knock": 0.2
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "preset": "nas_mixed_focal_legacy",
+  "objective": "f1",
+  "selection_split": "val",
+  "global_threshold": 0.45,
+  "class_thresholds": {
+    "Female speech": 0.45,
+    "Male speech": 0.5,
+    "Clapping": 0.45,
+    "Telephone": 0.35,
+    "Laughter": 0.45,
+    "Domestic sounds": 0.45,
+    "Walk, footsteps": 0.5,
+    "Door open/close": 0.5,
+    "Music": 0.5,
+    "Musical instrument": 0.5,
+    "Water tap": 0.35,
+    "Bell": 0.45,
+    "Knock": 0.35
+  },
+  "test_oracle_thresholds": {
+    "Female speech": 0.5,
+    "Male speech": 0.35,
+    "Clapping": 0.55,
+    "Telephone": 0.65,
+    "Laughter": 0.35,
+    "Domestic sounds": 0.25,
+    "Walk, footsteps": 0.4,
+    "Door open/close": 0.4,
+    "Music": 0.4,
+    "Musical instrument": 0.3,
+    "Water tap": 0.2,
+    "Bell": 0.15,
+    "Knock": 0.55
+  }
+}

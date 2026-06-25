@@ -1,0 +1,36 @@
+{
+  "preset": "resnet_native",
+  "objective": "f1",
+  "selection_split": "val",
+  "global_threshold": 0.2,
+  "class_thresholds": {
+    "Female speech": 0.5,
+    "Male speech": 0.35,
+    "Clapping": 0.1,
+    "Telephone": 0.05,
+    "Laughter": 0.45,
+    "Domestic sounds": 0.6,
+    "Walk, footsteps": 0.4,
+    "Door open/close": 0.55,
+    "Music": 0.15,
+    "Musical instrument": 0.05,
+    "Water tap": 0.3,
+    "Bell": 0.2,
+    "Knock": 0.05
+  },
+  "test_oracle_thresholds": {
+    "Female speech": 0.65,
+    "Male speech": 0.2,
+    "Clapping": 0.1,
+    "Telephone": 0.95,
+    "Laughter": 0.3,
+    "Domestic sounds": 0.7,
+    "Walk, footsteps": 0.1,
+    "Door open/close": 0.45,
+    "Music": 0.35,
+    "Musical instrument": 0.05,
+    "Water tap": 0.15,
+    "Bell": 0.05,
+    "Knock": 0.15
+  }
+}

@@ -33,6 +33,11 @@ References
 A. Politis et al., "A Dataset of Dynamic Reverberant Sound Scenes with
 Directional Interferers for Sound Event Localization and Detection,"
 DCASE Challenge 2020.
+
+Author
+------
+Stefano Giacomelli, Ph.D. candidate
+DISIM Department — University of L'Aquila
 """
 
 from pathlib import Path

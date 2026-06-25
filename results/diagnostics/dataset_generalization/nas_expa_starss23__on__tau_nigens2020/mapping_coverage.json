@@ -1,0 +1,128 @@
+{
+  "source_space": "tau_nigens2020",
+  "destination_space": "starss23",
+  "mapped_source_classes": 8,
+  "source_classes": 14,
+  "covered_destination_classes": 7,
+  "destination_classes": 13,
+  "rows": [
+    {
+      "source_index": 0,
+      "source_class": "alarm",
+      "destination_indices": [],
+      "destination_classes": []
+    },
+    {
+      "source_index": 1,
+      "source_class": "baby_cry",
+      "destination_indices": [],
+      "destination_classes": []
+    },
+    {
+      "source_index": 2,
+      "source_class": "crash",
+      "destination_indices": [],
+      "destination_classes": []
+    },
+    {
+      "source_index": 3,
+      "source_class": "dog_bark",
+      "destination_indices": [],
+      "destination_classes": []
+    },
+    {
+      "source_index": 4,
+      "source_class": "running_engine",
+      "destination_indices": [],
+      "destination_classes": []
+    },
+    {
+      "source_index": 5,
+      "source_class": "female_scream",
+      "destination_indices": [
+        0
+      ],
+      "destination_classes": [
+        "female_speech"
+      ]
+    },
+    {
+      "source_index": 6,
+      "source_class": "female_speech",
+      "destination_indices": [
+        0
+      ],
+      "destination_classes": [
+        "female_speech"
+      ]
+    },
+    {
+      "source_index": 7,
+      "source_class": "burning_fire",
+      "destination_indices": [],
+      "destination_classes": []
+    },
+    {
+      "source_index": 8,
+      "source_class": "footsteps",
+      "destination_indices": [
+        6
+      ],
+      "destination_classes": [
+        "footsteps"
+      ]
+    },
+    {
+      "source_index": 9,
+      "source_class": "knock",
+      "destination_indices": [
+        12
+      ],
+      "destination_classes": [
+        "knock"
+      ]
+    },
+    {
+      "source_index": 10,
+      "source_class": "male_scream",
+      "destination_indices": [
+        1
+      ],
+      "destination_classes": [
+        "male_speech"
+      ]
+    },
+    {
+      "source_index": 11,
+      "source_class": "male_speech",
+      "destination_indices": [
+        1
+      ],
+      "destination_classes": [
+        "male_speech"
+      ]
+    },
+    {
+      "source_index": 12,
+      "source_class": "telephone",
+      "destination_indices": [
+        3
+      ],
+      "destination_classes": [
+        "telephone"
+      ]
+    },
+    {
+      "source_index": 13,
+      "source_class": "piano",
+      "destination_indices": [
+        8,
+        9
+      ],
+      "destination_classes": [
+        "music",
+        "musical_instrument"
+      ]
+    }
+  ]
+}

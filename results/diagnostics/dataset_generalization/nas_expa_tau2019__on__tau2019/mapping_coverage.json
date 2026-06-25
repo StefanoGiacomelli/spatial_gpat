@@ -1,0 +1,120 @@
+{
+  "source_space": "tau2019",
+  "destination_space": "tau2019",
+  "mapped_source_classes": 11,
+  "source_classes": 11,
+  "covered_destination_classes": 11,
+  "destination_classes": 11,
+  "rows": [
+    {
+      "source_index": 0,
+      "source_class": "clearthroat",
+      "destination_indices": [
+        0
+      ],
+      "destination_classes": [
+        "clearthroat"
+      ]
+    },
+    {
+      "source_index": 1,
+      "source_class": "cough",
+      "destination_indices": [
+        1
+      ],
+      "destination_classes": [
+        "cough"
+      ]
+    },
+    {
+      "source_index": 2,
+      "source_class": "door",
+      "destination_indices": [
+        2
+      ],
+      "destination_classes": [
+        "door"
+      ]
+    },
+    {
+      "source_index": 3,
+      "source_class": "drawer",
+      "destination_indices": [
+        3
+      ],
+      "destination_classes": [
+        "drawer"
+      ]
+    },
+    {
+      "source_index": 4,
+      "source_class": "keyboard",
+      "destination_indices": [
+        4
+      ],
+      "destination_classes": [
+        "keyboard"
+      ]
+    },
+    {
+      "source_index": 5,
+      "source_class": "keys_drop",
+      "destination_indices": [
+        5
+      ],
+      "destination_classes": [
+        "keys_drop"
+      ]
+    },
+    {
+      "source_index": 6,
+      "source_class": "knock",
+      "destination_indices": [
+        6
+      ],
+      "destination_classes": [
+        "knock"
+      ]
+    },
+    {
+      "source_index": 7,
+      "source_class": "laughter",
+      "destination_indices": [
+        7
+      ],
+      "destination_classes": [
+        "laughter"
+      ]
+    },
+    {
+      "source_index": 8,
+      "source_class": "page_turn",
+      "destination_indices": [
+        8
+      ],
+      "destination_classes": [
+        "page_turn"
+      ]
+    },
+    {
+      "source_index": 9,
+      "source_class": "telephone",
+      "destination_indices": [
+        9
+      ],
+      "destination_classes": [
+        "telephone"
+      ]
+    },
+    {
+      "source_index": 10,
+      "source_class": "speech",
+      "destination_indices": [
+        10
+      ],
+      "destination_classes": [
+        "speech"
+      ]
+    }
+  ]
+}

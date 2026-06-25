@@ -1,0 +1,17 @@
+model,train_space,test_dataset,mapped_source_classes,source_classes,covered_destination_classes,destination_classes
+nas_expa_starss23,starss23,starss23,13,13,13,13
+nas_expa_starss23,starss23,tau2019,8,11,5,13
+nas_expa_starss23,starss23,tau_nigens2020,8,14,7,13
+nas_expa_starss23,starss23,tau_nigens2021,8,12,7,13
+nas_expa_tau2019,tau2019,starss23,6,13,5,11
+nas_expa_tau2019,tau2019,tau2019,11,11,11,11
+nas_expa_tau2019,tau2019,tau_nigens2020,4,14,3,11
+nas_expa_tau2019,tau2019,tau_nigens2021,4,12,3,11
+nas_expa_tau_nigens2020,tau_nigens2020,starss23,6,13,6,14
+nas_expa_tau_nigens2020,tau_nigens2020,tau2019,2,11,2,14
+nas_expa_tau_nigens2020,tau_nigens2020,tau_nigens2020,14,14,14,14
+nas_expa_tau_nigens2020,tau_nigens2020,tau_nigens2021,12,12,12,14
+nas_expa_tau_nigens2021,tau_nigens2021,starss23,6,13,6,12
+nas_expa_tau_nigens2021,tau_nigens2021,tau2019,2,11,2,12
+nas_expa_tau_nigens2021,tau_nigens2021,tau_nigens2020,12,14,12,12
+nas_expa_tau_nigens2021,tau_nigens2021,tau_nigens2021,12,12,12,12

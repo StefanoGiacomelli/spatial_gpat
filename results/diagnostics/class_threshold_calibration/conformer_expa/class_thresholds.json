@@ -1,0 +1,36 @@
+{
+  "preset": "conformer_expa",
+  "objective": "f1",
+  "selection_split": "val",
+  "global_threshold": 0.2,
+  "class_thresholds": {
+    "Female speech": 0.15,
+    "Male speech": 0.5,
+    "Clapping": 0.6,
+    "Telephone": 0.2,
+    "Laughter": 0.4,
+    "Domestic sounds": 0.35,
+    "Walk, footsteps": 0.05,
+    "Door open/close": 0.55,
+    "Music": 0.55,
+    "Musical instrument": 0.05,
+    "Water tap": 0.25,
+    "Bell": 0.2,
+    "Knock": 0.2
+  },
+  "test_oracle_thresholds": {
+    "Female speech": 0.25,
+    "Male speech": 0.3,
+    "Clapping": 0.55,
+    "Telephone": 0.5,
+    "Laughter": 0.1,
+    "Domestic sounds": 0.3,
+    "Walk, footsteps": 0.05,
+    "Door open/close": 0.25,
+    "Music": 0.1,
+    "Musical instrument": 0.05,
+    "Water tap": 0.05,
+    "Bell": 0.05,
+    "Knock": 0.3
+  }
+}

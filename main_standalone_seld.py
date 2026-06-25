@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-main_seld_only.py — Resumable StandaloneSELD Training Pipeline
+main_standalone_seld.py — Resumable StandaloneSELD Training Pipeline
 ==============================================================
 Trains ``StandaloneSELDModel`` (dual SED+DOA branches, no GP-AT backbone).
 
@@ -36,26 +36,26 @@ Usage
 ::
 
     # Debug: 1 epoch, 5 batches
-    .venv/bin/python main_seld_only.py \\
+    .venv/bin/python main_standalone_seld.py \\
         --config-file configs/experiments_standalone_seld/foa/seld_starss23.yaml \\
         --epochs 1 --limit-batches 5
 
     # Warm-start from best NAS checkpoint
-    .venv/bin/python main_seld_only.py \\
+    .venv/bin/python main_standalone_seld.py \\
         --config-file configs/experiments_standalone_seld/foa/seld_starss23.yaml \\
         --pretrained-ckpt runs/foa/deep_spec/checkpoints/exp_e3_l1_s1/98_0.3570.ckpt
 
     # BalancedSTARSS23 with custom data paths
-    .venv/bin/python main_seld_only.py \\
+    .venv/bin/python main_standalone_seld.py \\
         --config-file configs/experiments_standalone_seld/foa/mixed_data/conformer_mixed_specaug.yaml \\
         --starss-root /data/STARSS23 --tau-root /data/TAU-NIGENS2021 --tau2019-root /data/TAU2019
 
     # Run all configs in a directory
-    .venv/bin/python main_seld_only.py \\
+    .venv/bin/python main_standalone_seld.py \\
         --config-dir configs/experiments_standalone_seld/foa/
 
     # List status
-    .venv/bin/python main_seld_only.py --list
+    .venv/bin/python main_standalone_seld.py --list
 
 Author
 ------
@@ -654,6 +654,8 @@ def _run_experiment(
 # ══════════════════════════════════════════════════════════════════════════════
 
 def main() -> None:
+    """Run the command-line workflow."""
+
     global CONFIGS_DIR, CKPT_DIR, METRICS_DIR, STATE_FILE
 
     args = _parse_args()

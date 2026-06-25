@@ -1,0 +1,36 @@
+{
+  "preset": "conformer_native_cse",
+  "objective": "f1",
+  "selection_split": "val",
+  "global_threshold": 0.05,
+  "class_thresholds": {
+    "Female speech": 0.25,
+    "Male speech": 0.55,
+    "Clapping": 0.05,
+    "Telephone": 0.05,
+    "Laughter": 0.15,
+    "Domestic sounds": 0.1,
+    "Walk, footsteps": 0.05,
+    "Door open/close": 0.4,
+    "Music": 0.45,
+    "Musical instrument": 0.1,
+    "Water tap": 0.25,
+    "Bell": 0.05,
+    "Knock": 0.05
+  },
+  "test_oracle_thresholds": {
+    "Female speech": 0.9,
+    "Male speech": 0.05,
+    "Clapping": 0.1,
+    "Telephone": 0.95,
+    "Laughter": 0.05,
+    "Domestic sounds": 0.65,
+    "Walk, footsteps": 0.05,
+    "Door open/close": 0.2,
+    "Music": 0.05,
+    "Musical instrument": 0.05,
+    "Water tap": 0.05,
+    "Bell": 0.05,
+    "Knock": 0.3
+  }
+}

@@ -585,6 +585,8 @@ def _run_experiment(
 # ══════════════════════════════════════════════════════════════════════════════
 
 def main() -> None:
+    """Run the command-line workflow."""
+
     global CONFIGS_DIR, CKPT_DIR, METRICS_DIR, STATE_FILE
 
     args = _parse_args()

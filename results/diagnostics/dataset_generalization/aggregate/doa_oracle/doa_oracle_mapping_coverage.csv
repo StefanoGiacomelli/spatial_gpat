@@ -1,0 +1,17 @@
+model,training_dataset,test_dataset,domain,split,seed,pool_size,evaluated_items,mapped_source_classes,source_classes,source_coverage_ratio,covered_destination_classes,destination_classes,destination_coverage_ratio,mapped_classes
+nas_expa_starss23,starss23,starss23,native,test,2,0,4674,13,13,1.0,13,13,1.0,female_speech; male_speech; clapping; telephone; laughter; domestic_sounds; footsteps; door; music; musical_instrument; water_tap; bell; knock
+nas_expa_starss23,starss23,tau2019,cross_domain,test,2,0,2405,8,11,0.7272727272727273,5,13,0.38461538461538464,door; drawer; keyboard; keys_drop; knock; laughter; page_turn; telephone
+nas_expa_starss23,starss23,tau_nigens2020,cross_domain,test,2,0,2400,8,14,0.5714285714285714,7,13,0.5384615384615384,female_scream; female_speech; footsteps; knock; male_scream; male_speech; telephone; piano
+nas_expa_starss23,starss23,tau_nigens2021,cross_domain,test,2,0,2400,8,12,0.6666666666666666,7,13,0.5384615384615384,female_scream; female_speech; footsteps; knock; male_scream; male_speech; telephone; piano
+nas_expa_tau2019,tau2019,starss23,cross_domain,test,2,0,4674,6,13,0.46153846153846156,5,11,0.45454545454545453,female_speech; male_speech; telephone; laughter; door; knock
+nas_expa_tau2019,tau2019,tau2019,native,test,2,0,2405,11,11,1.0,11,11,1.0,clearthroat; cough; door; drawer; keyboard; keys_drop; knock; laughter; page_turn; telephone; speech
+nas_expa_tau2019,tau2019,tau_nigens2020,cross_domain,test,2,0,2400,4,14,0.2857142857142857,3,11,0.2727272727272727,female_speech; knock; male_speech; telephone
+nas_expa_tau2019,tau2019,tau_nigens2021,cross_domain,test,2,0,2400,4,12,0.3333333333333333,3,11,0.2727272727272727,female_speech; knock; male_speech; telephone
+nas_expa_tau_nigens2020,tau_nigens2020,starss23,cross_domain,test,2,0,4674,6,13,0.46153846153846156,6,14,0.42857142857142855,female_speech; male_speech; telephone; footsteps; musical_instrument; knock
+nas_expa_tau_nigens2020,tau_nigens2020,tau2019,cross_domain,test,2,0,2405,2,11,0.18181818181818182,2,14,0.14285714285714285,knock; telephone
+nas_expa_tau_nigens2020,tau_nigens2020,tau_nigens2020,native,test,2,0,2400,14,14,1.0,14,14,1.0,alarm; baby_cry; crash; dog_bark; running_engine; female_scream; female_speech; burning_fire; footsteps; knock; male_scream; male_speech; telephone; piano
+nas_expa_tau_nigens2020,tau_nigens2020,tau_nigens2021,cross_domain,test,2,0,2400,12,12,1.0,12,14,0.8571428571428571,alarm; baby_cry; crash; dog_bark; female_scream; female_speech; footsteps; knock; male_scream; male_speech; telephone; piano
+nas_expa_tau_nigens2021,tau_nigens2021,starss23,cross_domain,test,2,0,4674,6,13,0.46153846153846156,6,12,0.5,female_speech; male_speech; telephone; footsteps; musical_instrument; knock
+nas_expa_tau_nigens2021,tau_nigens2021,tau2019,cross_domain,test,2,0,2405,2,11,0.18181818181818182,2,12,0.16666666666666666,knock; telephone
+nas_expa_tau_nigens2021,tau_nigens2021,tau_nigens2020,cross_domain,test,2,0,2400,12,14,0.8571428571428571,12,12,1.0,alarm; baby_cry; crash; dog_bark; female_scream; female_speech; footsteps; knock; male_scream; male_speech; telephone; piano
+nas_expa_tau_nigens2021,tau_nigens2021,tau_nigens2021,native,test,2,0,2400,12,12,1.0,12,12,1.0,alarm; baby_cry; crash; dog_bark; female_scream; female_speech; footsteps; knock; male_scream; male_speech; telephone; piano
