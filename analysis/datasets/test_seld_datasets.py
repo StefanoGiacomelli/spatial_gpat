@@ -72,7 +72,6 @@ from datasets import (  # noqa: E402
     STARSS23Dataset,
     TAUNIGENSDataset,
     TAUNIGENS2020Dataset,
-    SELDDataModule,
     SELDDataset,
 )
 from datasets.tau2019 import TAU2019Dataset

@@ -1,9 +1,8 @@
 """Shared filesystem conventions for analysis scripts.
 
 The training entry points keep writing checkpoints, TensorBoard logs, state
-files, and raw metrics under ``runs/``.  Analysis scripts should write derived
-assets only under ``results/`` and ``figures/`` so that code folders remain
-free of generated files.
+files, and raw metrics under ``runs/``.  Analysis scripts write derived
+assets only under ``results/`` and ``figures/``.
 
 Author
 ------

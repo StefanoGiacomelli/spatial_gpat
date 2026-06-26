@@ -25,7 +25,7 @@ Options
 Notes
 -----
 * sed_eval and DOA oracle are NEVER computed here (flags default to False).
-* Data root paths in hparams.yaml are remapped from HPC lustre paths to local paths.
+* Data root paths in hparams.yaml are remapped from HPC paths to local paths.
 * A completion_report.json is written to the experiment run directory after success.
 
 Author

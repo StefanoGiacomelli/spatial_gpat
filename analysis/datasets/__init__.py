@@ -2,10 +2,7 @@
 analysis.datasets — Dataset Inspection and Figure Scripts
 =========================================================
 Validation, summary-statistic, and figure-generation scripts for STARSS23,
-TAU-NIGENS, TAU2019, BalancedSTARSS23, and AudioSet-Strong derived analyses.
-
-Outputs are split between ``results/datasets`` for CSV/JSON artifacts and
-``figures/datasets`` for SVG/PNG figures.
+TAU-NIGENS, TAU2019, and BalancedSTARSS23 analyses.
 
 Author
 ------
