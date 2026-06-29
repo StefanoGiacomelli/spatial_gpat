@@ -378,9 +378,10 @@ If you find this work useful or use part of it, please cite:
   author        = {Giacomelli, Stefano and Damiano, Stefano and Rinaldi, Claudia and Graziosi, Fabio and van Waterschoot, Toon},
   year          = {2026},
   archivePrefix = {arXiv},
-  eprint        = {TODO},
+  doi           = {10.48550/arXiv.2606.27751},
   primaryClass  = {cs.SD},
-  url           = {TODO}
+  notes         = {Technical Report (KU-Leuven - UnivAQ)},
+  url           = {https://arxiv.org/abs/2606.27751}
 }
 ```
 
