@@ -8,6 +8,10 @@
 
 This repository contains the research code for **AT2SELD**, a semantic-to-spatial framework that extends General Purpose Audio Tagging (GP-AT) backbones toward **Sound Event Localization and Detection (SELD)**. The main idea is to reuse high-level semantic representations learned by large-scale Audio Tagging (AT) models as acoustic priors, and to connect them with trainable multichannel spatial processing, temporal modeling, and track-wise SED/DOA output regressors.
 
+<p align="center">
+  <img src="figures/demo/demo_tau2019_expA_split0_61_full.svg" alt="Inference_Example" width="900">
+</p>
+
 ## Highlights
 
 | Area | What this repository provides |
