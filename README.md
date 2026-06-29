@@ -35,19 +35,8 @@ The repository includes experiments on **STARSS23**, **TAU-NIGENS2021**, **TAU-N
 
 ## Main Results
 
-ToDo
-
-### NAS Stage Summary
-
-ToDo
-
-### Fine-Tuning and Dataset Effects
-
-ToDo
-
-### Calibration and DOA Diagnostics
-
-ToDo
+For further insights, implementation details, and extended analyses, please refer to our Technical Report: 
+- S. Giacomelli, S. Damiano, C. Rinaldi, F. Graziosi, and T. van Waterschoot, “From General-Purpose Audio Tagging to Spatially Grounded Sound Event Localization and Detection,” arXiv:2606.27751, 2026. [[Online]](https://doi.org/10.48550/arXiv.2606.27751).
 
 ---
 
