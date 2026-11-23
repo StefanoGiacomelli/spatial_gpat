@@ -1,0 +1,22 @@
+{
+ "script": "analysis/diagnostics/bootstrap_oracle_recording.py",
+ "inputs": {
+  "mixed_bce": "results/diagnostics/doa_oracle_test/nas-seld/exp_ft_mixed_bce/doa_recording_summary.csv",
+  "mixed_focal (reference)": "results/diagnostics/doa_oracle_test/nas-seld/exp_ft_mixed_focal/doa_recording_summary.csv",
+  "ExpA (native STARSS23, no augmentation)": "results/diagnostics/doa_oracle_test/nas-seld/expA_balanced_starss23/doa_recording_summary.csv",
+  "ExpB": "results/diagnostics/doa_oracle_test/nas-seld/balanced_starss23_expB/doa_recording_summary.csv",
+  "ExpB-beta.7": "results/diagnostics/doa_oracle_test/nas-seld/balanced_starss23_expB_beta07_thr03/doa_recording_summary.csv",
+  "ExpC": "results/diagnostics/doa_oracle_test/nas-seld/balanced_starss23_expC/doa_recording_summary.csv",
+  "ExpA-posw": "results/diagnostics/doa_oracle_test/nas-seld/posw_balanced_expA/doa_recording_summary.csv",
+  "Conformer ExpA (standalone, historical raw-slot log, NOT PIT-aligned: not comparable)": "results/diagnostics/doa_oracle_test/conformer/conformer_loss_experiments/doa_recording_summary.csv",
+  "Conformer ExpA (standalone, Balanced + augmentation; tPIT-aligned)": "results/diagnostics/doa_oracle_test_phase2/conformer_expA_standalone_tpit_aligned/doa_recording_summary.csv",
+  "ResNet ExpA (standalone, Balanced + augmentation; tPIT-aligned)": "results/diagnostics/doa_oracle_test_phase2/resnet_expA_standalone_tpit_aligned/doa_recording_summary.csv"
+ },
+ "note": "standalone rows: re-inference with doa_oracle_test.py --align-standalone (tPIT-aligned); the historical standalone log is raw-slot (not PIT-aligned) and excluded from paired differences",
+ "resamples": 10000,
+ "seed": 0,
+ "n_recordings": 78,
+ "statistic": "slot-weighted acc_20deg (tPIT-aligned oracle activity); 95% percentile CI",
+ "interpretation": "test-set sampling (recording bootstrap), not training-seed variance",
+ "date": "2026-10-26 09:19:04"
+}

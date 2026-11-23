@@ -1,0 +1,22 @@
+{
+ "script": "analysis/diagnostics/validation_seed_check.py",
+ "argv": [
+  "--cache-root",
+  "<cache-dir>"
+ ],
+ "pools": {
+  "seed2_matrix_pool": {
+   "n_clips": 18,
+   "n_training_clips_seed42": 15
+  },
+  "seed42_heldout": {
+   "n_clips": 18,
+   "n_training_clips_seed42": 0
+  }
+ },
+ "elapsed_s": 157.0,
+ "load_at_start": "5.99 6.86 8.31",
+ "load_at_end": "7.13 7.15 8.19",
+ "date": "2026-10-26 04:16:01",
+ "note": "seed 42 = the validation split of the training runs (held out); seed 2 = pool of the matrix/diagnostic scripts (15 of 18 clips are training clips)"
+}

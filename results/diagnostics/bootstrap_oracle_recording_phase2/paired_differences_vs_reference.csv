@@ -1,0 +1,19 @@
+run,reference,delta_pp,ci95_low_pp,ci95_high_pp,p_delta_gt_0
+mixed_bce,mixed_focal (reference),-6.75,-9.33,-4.35,0.0
+"ExpA (native STARSS23, no augmentation)",mixed_focal (reference),14.79,10.06,19.97,1.0
+ExpB,mixed_focal (reference),12.9,8.9,17.13,1.0
+ExpB-beta.7,mixed_focal (reference),6.46,2.87,10.18,1.0
+ExpC,mixed_focal (reference),10.44,6.56,14.64,1.0
+ExpA-posw,mixed_focal (reference),10.86,5.7,16.19,0.9999
+"Conformer ExpA (standalone, Balanced + augmentation; tPIT-aligned)",mixed_focal (reference),9.63,5.49,14.03,1.0
+"ResNet ExpA (standalone, Balanced + augmentation; tPIT-aligned)",mixed_focal (reference),8.2,3.56,12.77,0.9999
+ExpB,"Conformer ExpA (standalone, Balanced + augmentation; tPIT-aligned)",3.26,-0.27,6.87,0.9639
+ExpC,"Conformer ExpA (standalone, Balanced + augmentation; tPIT-aligned)",0.81,-3.2,4.98,0.6478
+ExpA-posw,"Conformer ExpA (standalone, Balanced + augmentation; tPIT-aligned)",1.23,-2.7,5.31,0.729
+ExpB-beta.7,"Conformer ExpA (standalone, Balanced + augmentation; tPIT-aligned)",-3.17,-6.09,-0.36,0.012
+"ExpA (native STARSS23, no augmentation)","Conformer ExpA (standalone, Balanced + augmentation; tPIT-aligned)",5.15,1.44,9.29,0.9972
+ExpB,"ResNet ExpA (standalone, Balanced + augmentation; tPIT-aligned)",4.7,0.42,9.24,0.9849
+ExpC,"ResNet ExpA (standalone, Balanced + augmentation; tPIT-aligned)",2.25,-2.85,7.82,0.8031
+ExpA-posw,"ResNet ExpA (standalone, Balanced + augmentation; tPIT-aligned)",2.67,-1.93,7.69,0.8668
+ExpB-beta.7,"ResNet ExpA (standalone, Balanced + augmentation; tPIT-aligned)",-1.74,-6.1,2.89,0.2329
+"ExpA (native STARSS23, no augmentation)","ResNet ExpA (standalone, Balanced + augmentation; tPIT-aligned)",6.59,2.73,10.95,0.9997

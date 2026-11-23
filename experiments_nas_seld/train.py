@@ -137,7 +137,7 @@ class NASLightningModule(L.LightningModule):
         metrics_cfg     = cfg.get('metrics', {})
         self.act_thresh = float(metrics_cfg.get('act_thresh', 0.5))
         # DOA oracle and sed_eval are heavy diagnostics: disabled in standard test.
-        # Use auxiliary/doa_oracle_test.py and auxiliary/activation_test.py instead.
+        # Use analysis/diagnostics/doa_oracle_test.py and analysis/diagnostics/activation_test.py instead.
         self._compute_doa_oracle_in_test = bool(
             metrics_cfg.get('compute_doa_oracle_in_training_test', False)
         )

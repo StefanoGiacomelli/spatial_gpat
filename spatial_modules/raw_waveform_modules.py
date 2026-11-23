@@ -218,7 +218,8 @@ class GaborFrontEnd(nn.Module):
     and all others for inter-channel phase (DoA) encoding.
 
     FOA format  (format='foa'):
-        Channel 0 = omni W (reference); channels 1-3 = x, y, z.
+        Channel 0 = omni W (reference); channels 1-3 = the dipole channels in file
+        order (ACN/AmbiX corpora: 1 = y, 2 = z, 3 = x).
         Cross-spectra: Z_k · conj(Z_0) for k=1,2,3.
         Stack: [|Z_0|, Re(CS_1), Im(CS_1), Re(CS_2), Im(CS_2), Re(CS_3), Im(CS_3)]
         → n_spatial = 7 features per (filter, time) point.

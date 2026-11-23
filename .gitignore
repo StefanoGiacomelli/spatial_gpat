@@ -6,10 +6,21 @@
 /runs/*
 !/runs/README.md
 
+# re-computable caches (window outputs of the additional analyses, matrix inference caches, ...)
+/results/cache/
+.cache/
+
 *.venv/
 __pycache__/
 *.py[cod]
 *$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+*.egg-info/
+.coverage
+htmlcov/
 
 .DS_Store
 .AppleDouble
@@ -19,10 +30,18 @@ __pycache__/
 .env
 wandb/
 *.out
-*.sh
 
+# Local helper / cluster job scripts are not tracked ...
+*.sh
 /setup_torch_venv.sh
 /clean_pip_cache.sh
 /gpu_job.sh
 /main.sh
 /setup_venv.sh
+# ... except the scripts that ship with the repository.  The negations MUST come after the
+# *.sh glob above (a later pattern wins), otherwise the glob re-ignores them; the conventional
+# script folders are un-ignored so that new helper scripts are never hidden by mistake.
+!/data/setup_data.sh
+!/semantic_backbone/epanns/fetch_checkpoint.sh
+!/scripts/**/*.sh
+!/tools/**/*.sh

@@ -1,0 +1,17 @@
+{
+ "script": "analysis/diagnostics/stitched_oracle_doa.py",
+ "argv": [
+  "--cache-root",
+  "<cache-dir>"
+ ],
+ "runs": [
+  "expA_starss23_test",
+  "mixedfocal_starss23_test",
+  "expB_starss23_test"
+ ],
+ "elapsed_s": 306.8,
+ "load_at_start": "7.02 6.80 6.84",
+ "load_at_end": "7.17 6.69 6.73",
+ "date": "2026-10-26 04:46:16",
+ "note": "pooled = windows pooled as the stored diagnostics; stitched = overlapping windows averaged first"
+}

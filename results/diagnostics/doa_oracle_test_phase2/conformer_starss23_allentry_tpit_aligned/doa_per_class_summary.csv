@@ -1,0 +1,14 @@
+dataset,split,model_name,class_idx,class_name,active_slots,mean_AE,median_AE,p90_AE,acc_20deg,pred_norm_median,zero_norm_lt010
+starss23,test,standalone_conformer,0,Female speech,1073433,100.208633,117.652283,159.674606,0.116290,0.574729,0.195002
+starss23,test,standalone_conformer,1,Male speech,1574286,81.773834,71.390121,159.575439,0.205047,0.651726,0.193330
+starss23,test,standalone_conformer,2,Clapping,28142,59.609550,48.005554,130.865250,0.193305,0.459388,0.340097
+starss23,test,standalone_conformer,3,Telephone,35953,72.564827,67.624619,123.532181,0.046589,0.010906,0.608600
+starss23,test,standalone_conformer,4,Laughter,161272,75.885002,67.996307,144.859940,0.113374,0.074436,0.555639
+starss23,test,standalone_conformer,5,Domestic sounds,635253,67.809433,65.202850,116.965561,0.053582,0.818076,0.132961
+starss23,test,standalone_conformer,6,"Walk, footsteps",180973,85.601044,84.034386,145.510757,0.066220,0.011259,0.772883
+starss23,test,standalone_conformer,7,Door open/close,21429,60.426479,48.461117,122.530373,0.170237,0.252895,0.408792
+starss23,test,standalone_conformer,8,Music,1238924,95.603851,104.083725,148.115494,0.061898,0.470588,0.274789
+starss23,test,standalone_conformer,9,Musical instrument,1030057,80.351761,75.931587,146.119247,0.116671,0.084222,0.516488
+starss23,test,standalone_conformer,10,Water tap,101696,74.216187,71.867126,135.329422,0.076404,0.012882,0.841508
+starss23,test,standalone_conformer,11,Bell,45799,89.776390,88.017509,144.116287,0.015000,0.014654,0.746152
+starss23,test,standalone_conformer,12,Knock,1717,87.257355,89.706543,141.404739,0.027373,0.031148,0.570181

@@ -52,7 +52,10 @@ class SpectralProcessor(nn.Module):
     Optionally appends:
       - **Intensity vectors** (FOA, ``compute_iv=True``): 3 extra channels
         ``I_xyz(t,f) = Re(conj(W) * XYZ)``, pointing toward the dominant source.
-        Only valid when C=4 (W,X,Y,Z FOA format).
+        Only valid when C=4 (FOA).  The three IV channels follow the file order of
+        channels 1..3 -- for the ACN/AmbiX corpora used here (W,Y,Z,X) they are
+        therefore ordered (I_y, I_z, I_x), not (I_x, I_y, I_z); the network is
+        trained on this fixed order, so the behaviour is unaffected.
       - **GCC-PHAT** (MIC, ``compute_gcc=True``): ``C*(C-1)/2`` extra channels,
         one per microphone pair.  Each channel holds the GCC-PHAT function
         (lag domain, truncated to ``tau_max`` lags, zero-padded to ``freq_bins``)
@@ -138,7 +141,8 @@ class SpectralProcessor(nn.Module):
 
         # ── Intensity vectors (FOA only, C==4) ───────────────────────────
         if self.compute_iv and C == 4:
-            # spec4d: (B, 4, F, T) complex — W=ch0, X=ch1, Y=ch2, Z=ch3
+            # spec4d: (B, 4, F, T) complex — ch0 = W; ch1..ch3 = the file's dipole
+            # channels (ACN corpora: ch1 = Y, ch2 = Z, ch3 = X; AmbiX/ACN order)
             W   = spec4d[:, 0:1]               # (B, 1, F, T) complex
             XYZ = spec4d[:, 1:]                # (B, 3, F, T) complex
             # I_xyz = Re(conj(W) * XYZ): points toward dominant source

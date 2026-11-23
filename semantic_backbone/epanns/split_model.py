@@ -77,7 +77,8 @@ class SplitEPANNs(nn.Module):
     E-PANNs backbone split into three independently configurable groups.
 
     Args:
-        cfg (dict): parsed from the ``semantic`` section of nas_base.yaml.
+        cfg (dict): parsed from the ``semantic`` section of an experiment configuration
+            (configs/ YAML or a stored hparams.yaml ``cfg`` block).
             Expected keys:
               checkpoint   (str)  : path to pretrained weights (optional)
               n_cls        (int)  : number of output classes

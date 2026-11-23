@@ -18,6 +18,18 @@ Target tensor convention
     Active entry: ``[x, y, z]`` where
         x = sin(az)*cos(el),  y = cos(az)*cos(el),  z = sin(el)
     Silent entry: ``[0, 0, 0]``
+    (this *label* frame swaps x and y with respect to the DCASE/FOA frame
+    X = cos(az)cos(el), Y = sin(az)cos(el); angles and angular errors are
+    invariant to the swap.  See docs/CONVENTIONS.md.)
+
+FOA channel order of the audio files
+    All four corpora (STARSS23, TAU-NIGENS2020/2021, TAU2019) store FOA as
+    AmbiX/ACN: channel 0 = W, 1 = Y, 2 = Z, 3 = X.  ``SELDAugment`` has a
+    ``foa_channel_order`` option: ``'legacy_wxyz'`` (default) reproduces the
+    behaviour of every published run (channels 1,2,3 are treated as X,Y,Z --
+    which is inconsistent with the labels for 14 of the 15 patterns on ACN
+    files), ``'acn'`` applies the patterns to the right channels
+    (X = wav[3], Y = wav[1], Z = wav[2]).  See docs/CONVENTIONS.md.
 
 Author
 ------
@@ -321,14 +333,23 @@ class SELDAugment:
     gain_min      : minimum amplitude gain (< 1.0 = attenuation)
     gain_max      : maximum amplitude gain
     noise_snr_db  : injected noise SNR in dB (higher = less noise)
+    foa_channel_order : ``'legacy_wxyz'`` (default; reproduces every published run)
+                    or ``'acn'`` (patterns applied to the ACN channels W,Y,Z,X)
 
     Augmentations
     ~~~~~~~~~~~~~
     A — 16 Patterns (Mazzon et al., foa_augmentations.pdf, Table 1):
         Select uniformly one of the 15 non-identity FOA symmetry transforms.
-        Each pattern permutes/negates channels ch1(X), ch2(Y), ch3(Z) and
+        Each pattern permutes/negates the three dipole channels (X, Y, Z) and
         applies the corresponding DOA transformation.  W channel (ch0) is
-        always preserved.  DOA target updated consistently.
+        always preserved.  The *position* of X, Y, Z among the file channels is
+        set by ``foa_channel_order``:
+
+            'legacy_wxyz' (default, published behaviour): X, Y, Z = wav[1], wav[2], wav[3]
+            'acn'         (physically correct for the corpora): X, Y, Z = wav[3], wav[1], wav[2]
+
+        With the legacy order and ACN files only pattern 11 (full inversion)
+        keeps audio and label consistent (docs/CONVENTIONS.md, section 3).
 
     B — Gain Scaling:
         g ~ U(gain_min, gain_max) applied to all 4 channels.
@@ -344,10 +365,18 @@ class SELDAugment:
         With force=True, p_none is excluded — exactly one aug is applied.
     """
 
+    # File-channel index of the (X, Y, Z) dipoles for each supported order.
+    _FOA_XYZ_INDEX = {
+        'legacy_wxyz': (1, 2, 3),   # channels treated as (W, X, Y, Z) -- published behaviour
+        'acn':         (3, 1, 2),   # channels are (W, Y, Z, X): X = wav[3], Y = wav[1], Z = wav[2]
+    }
+
     # 15 non-identity FOA symmetry patterns from Mazzon et al., Table 1.
     # Encoding: (ch1_sign, ch1_from, ch2_sign, ch2_from, ch3_sign,
     #             cx_sign,  cx_from,  cy_sign,  cy_from,  cz_sign)
-    # ch1_from / ch2_from : 1=take from X (wav[1]), 2=take from Y (wav[2])
+    # ch1 / ch2 / ch3 are the NEW X / Y / Z dipole channels; ch1_from / ch2_from:
+    # 1 = take from the old X, 2 = take from the old Y.  Where X, Y, Z sit in the
+    # file is decided by ``foa_channel_order`` (see ``_FOA_XYZ_INDEX``).
     # cx_from  / cy_from  : 0=take from code_x (tgt[...,0]), 1=from code_y (tgt[...,1])
     _PATTERNS: List[Tuple] = [
         (-1, 2, +1, 1, +1,  +1, 1, -1, 0, +1),  # 1   φ+π/2,  θ
@@ -376,8 +405,16 @@ class SELDAugment:
         gain_min: float = 0.3,
         gain_max: float = 0.9,
         noise_snr_db: float = 35.0,
+        foa_channel_order: str = 'legacy_wxyz',
         **kwargs,   # absorb unknown YAML keys
     ):
+        if foa_channel_order not in self._FOA_XYZ_INDEX:
+            raise ValueError(
+                f"foa_channel_order must be one of {sorted(self._FOA_XYZ_INDEX)}, "
+                f"got {foa_channel_order!r}"
+            )
+        self.foa_channel_order = foa_channel_order
+        self._xyz_idx = self._FOA_XYZ_INDEX[foa_channel_order]
         self.enabled      = enabled
         self.p_16patterns = p_16patterns
         self.p_gain       = p_gain
@@ -440,16 +477,31 @@ class SELDAugment:
         wav: torch.Tensor,
         target: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        pat = self._PATTERNS[int(torch.randint(len(self._PATTERNS), (1,)).item())]
+        idx = int(torch.randint(len(self._PATTERNS), (1,)).item())
+        return self.apply_pattern(wav, target, idx)
+
+    def apply_pattern(
+        self,
+        wav: torch.Tensor,
+        target: torch.Tensor,
+        pattern_index: int,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Apply pattern ``pattern_index`` (0-based; 0..14 = table rows 1..15) in place.
+
+        ``wav`` and ``target`` must already be private copies (``__call__`` clones
+        them).  Public so that tests can exercise every pattern deterministically.
+        """
+        pat = self._PATTERNS[pattern_index]
         ch1_s, ch1_f, ch2_s, ch2_f, ch3_s, cx_s, cx_f, cy_s, cy_f, cz_s = pat
+        ix, iy, iz = self._xyz_idx
 
         # Read originals before in-place modification
-        x_orig  = wav[1].clone()
-        y_orig  = wav[2].clone()
-        z_orig  = wav[3].clone()
-        wav[1]  = ch1_s * (x_orig if ch1_f == 1 else y_orig)
-        wav[2]  = ch2_s * (x_orig if ch2_f == 1 else y_orig)
-        wav[3]  = ch3_s * z_orig
+        x_orig  = wav[ix].clone()
+        y_orig  = wav[iy].clone()
+        z_orig  = wav[iz].clone()
+        wav[ix] = ch1_s * (x_orig if ch1_f == 1 else y_orig)
+        wav[iy] = ch2_s * (x_orig if ch2_f == 1 else y_orig)
+        wav[iz] = ch3_s * z_orig
 
         cx_orig = target[..., 0].clone()
         cy_orig = target[..., 1].clone()

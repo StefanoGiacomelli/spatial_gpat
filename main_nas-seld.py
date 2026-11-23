@@ -64,7 +64,11 @@ Stefano Giacomelli, Ph.D. candidate
 DISIM Department — University of L'Aquila
 """
 
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:      # python-dotenv is optional
+    def load_dotenv(*_args, **_kwargs):
+        return False
 
 import atexit
 import json
@@ -145,6 +149,23 @@ STATE_FILE  = _ROOT / 'runs' / 'experiments' / 'experiment_state.json'
 # CLI
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _build_loggers(args, exp_name: str, cfg: dict, tb_logger) -> list:
+    """TensorBoard logger plus (unless ``--wandb disabled``) the W&B logger.
+
+    Without the flag the behaviour is exactly the historical one: a
+    ``WandbLogger(project='spatial-gpat', ...)`` honouring the usual W&B
+    environment (``WANDB_MODE``, ``WANDB_API_KEY``).
+    """
+    mode = getattr(args, 'wandb', None)
+    if mode == 'disabled':
+        print('  [wandb] disabled -> TensorBoard only')
+        return [tb_logger]
+    kwargs = dict(project='spatial-gpat', name=exp_name, config=cfg)
+    if mode == 'offline':
+        kwargs['offline'] = True
+    return [tb_logger, WandbLogger(**kwargs)]
+
+
 def _parse_args():
     import argparse
 
@@ -216,6 +237,14 @@ def _parse_args():
     p.add_argument('--list',   action='store_true',
                    help='Print experiment status table and exit.')
 
+    # ── Logging ───────────────────────────────────────────────────────────────
+    p.add_argument('--wandb', type=str, default=None,
+                   choices=['online', 'offline', 'disabled'],
+                   help='Weights & Biases mode.  Default (flag absent): unchanged '
+                        '(online unless WANDB_MODE says otherwise).  "offline" logs '
+                        'locally under ./wandb (no account needed); "disabled" '
+                        'trains with TensorBoard only.')
+
     return p.parse_args()
 
 
@@ -271,6 +300,16 @@ def _build_cfg(exp_yaml_path: Path, args) -> dict:
 
     Priority (lowest → highest):
         runner defaults → dataset config YAML → experiment YAML → CLI
+
+    Exceptions that matter for reproducibility (behaviour unchanged, documented here):
+      * ``semantic.dataset`` is always taken from the CLI ``--dataset`` argument
+        (default ``STARSS23``), overriding the value written in the experiment YAML;
+      * the ``augmentation:`` block of ``configs/datasets/<dataset>.yaml`` is applied
+        *on top of* the experiment YAML's block (the dataset config wins).
+    A YAML written for BalancedSTARSS23 that is launched without
+    ``--dataset BalancedSTARSS23`` therefore trains on native STARSS23 with the
+    augmentation of ``configs/datasets/STARSS23.yaml``.  The executed configuration of
+    every run is the stored ``hparams.yaml`` (see docs/REPRODUCIBILITY.md).
 
     Steps
     -----
@@ -524,11 +563,7 @@ def _run_experiment(
         version  = 0,
     )
     
-    wb_logger = WandbLogger(
-        project  = 'spatial-gpat',
-        name     = exp_name,
-        config   = cfg
-    )
+    loggers = _build_loggers(args, exp_name, cfg, tb_logger)
 
     trainer_kwargs = dict(
         max_epochs              = cfg['training']['epochs'],
@@ -538,7 +573,7 @@ def _run_experiment(
         gradient_clip_val       = 1.0,
         accumulate_grad_batches = accum,
         log_every_n_steps       = 5,
-        logger                  = [tb_logger, wb_logger],
+        logger                  = loggers,
         num_sanity_val_steps    = 0,
     )
     if dataset_name == 'TAU2019':

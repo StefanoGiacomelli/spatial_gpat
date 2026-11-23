@@ -55,3 +55,12 @@ runs/
 The exact subdirectories structure refers to all framework experiments.
 Existing analysis presets and diagnostic scripts expect checkpoint
 paths under these two top-level folders.
+
+## Integrity and provenance
+
+* `docs/checksums.sha256` lists the SHA-256 of every checkpoint, `hparams.yaml`, metrics JSON and experiment-state file of the
+  archive; verify a restored copy from the repository root with `python analysis/maintenance/checksums.py --verify`.
+* The configuration that was executed by each run is its stored `hparams.yaml`; `results/experiments/run_configs.csv` exports it for all
+  69 runs (`python analysis/experiments/export_run_configs.py --check` compares the ledger with the files restored here).
+* The archive may contain `last.ckpt` / `last-v1.ckpt` files of interrupted runs; for six runs they are byte-identical to the best-epoch
+  checkpoint (see the comments at the end of `docs/checksums.sha256`) and can be deleted without loss.

@@ -1,0 +1,89 @@
+cff-version: 1.2.0
+message: "If you use this repository in academic work, please cite the AT2SELD technical report (preferred-citation) and, where relevant, the related publications."
+title: "Spatial GP-AT / AT2SELD: from General-Purpose Audio Tagging to Spatially Grounded Sound Event Localization and Detection"
+type: software
+repository-code: "https://github.com/StefanoGiacomelli/spatial_gpat"
+url: "https://github.com/StefanoGiacomelli/spatial_gpat"
+authors:
+  - family-names: Giacomelli
+    given-names: Stefano
+    email: stefano.giacomelli@graduate.univaq.it
+    orcid: "https://orcid.org/0009-0009-0438-1748"
+    affiliation: "Department of Information Engineering, Computer Science and Mathematics (DISIM), University of L'Aquila"
+abstract: >-
+  Research code of AT2SELD, a semantic-to-spatial framework that extends General Purpose Audio Tagging
+  (GP-AT) backbones toward Sound Event Localization and Detection (SELD): a pretrained audio-tagging
+  backbone (E-PANNs) is used as an acoustic prior and connected, through a cross-stitch bridge, to a
+  trainable multichannel spatial processing, temporal modeling and track-wise SED/DOA branch. The
+  repository contains the training and evaluation code, the staged architecture-search configurations, the
+  standalone SELD baselines, the diagnostics (threshold calibration, DOA oracle, cross-dataset projection,
+  metric variants, inference-time probes) and the effective-configuration ledger of all executed runs. It
+  supports the AT2SELD technical report. Research activities were mainly funded under the Ministerial
+  Decree (DM) 118/2023, Mission 4, Component 1, Investment 4.1 of the National Recovery and Resilience
+  Plan (PNRR) – “PNRR Research” – CUP: E11I23000100001.
+license: CC-BY-4.0
+keywords:
+  - sound event localization and detection
+  - audio tagging
+  - first-order ambisonics
+  - E-PANNs
+  - STARSS23
+preferred-citation:
+  type: report
+  authors:
+    - family-names: Giacomelli
+      given-names: Stefano
+    - family-names: Damiano
+      given-names: Stefano
+    - family-names: Rinaldi
+      given-names: Claudia
+    - family-names: Graziosi
+      given-names: Fabio
+    - family-names: van Waterschoot
+      given-names: Toon
+  title: "From General-Purpose Audio Tagging to Spatially Grounded Sound Event Localization and Detection"
+  institution:
+    name: "KU Leuven -- University of L'Aquila"
+  notes: "Technical Report (arXiv-hosted)"
+  number: "arXiv:2606.27751"
+  year: 2026
+  month: 6
+  doi: "10.48550/arXiv.2606.27751"
+  url: "https://arxiv.org/abs/2606.27751"
+references:
+  - type: article
+    authors:
+      - family-names: Giacomelli
+        given-names: Stefano
+      - family-names: Giordano
+        given-names: Marco
+      - family-names: Rinaldi
+        given-names: Claudia
+      - family-names: Graziosi
+        given-names: Fabio
+    title: "From General-Purpose Audio Tagging to Real-Time Emergency Vehicle Siren Detection"
+    journal: "IEEE Transactions on Audio, Speech and Language Processing"
+    volume: 34
+    start: 3428
+    end: 3444
+    year: 2026
+    doi: "10.1109/TASLPRO.2026.3703169"
+  - type: article
+    authors:
+      - family-names: Giacomelli
+        given-names: Stefano
+      - family-names: Giordano
+        given-names: Marco
+      - family-names: Rinaldi
+        given-names: Claudia
+      - family-names: Graziosi
+        given-names: Fabio
+    title: "AudioSet-Tools: A Python Framework for Taxonomy-Aware AudioSet Curation and Reproducible Audio Research"
+    journal: "EURASIP Journal on Audio, Speech, and Music Processing"
+    volume: 2026
+    issue: 1
+    notes: "Article number 2"
+    year: 2026
+    publisher:
+      name: "Springer Nature"
+    doi: "10.1186/s13636-025-00436-z"

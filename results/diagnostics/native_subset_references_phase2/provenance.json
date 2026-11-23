@@ -1,0 +1,61 @@
+{
+ "script": "analysis/diagnostics/native_subset_references.py",
+ "argv": [
+  "--cache-root",
+  "<cache-dir>"
+ ],
+ "caches": {
+  "starss23": [
+   "expA_starss23_val",
+   "expA_starss23_test"
+  ],
+  "tau2019": [
+   "tau2019_val",
+   "tau2019_test"
+  ],
+  "tau_nigens2020": [
+   "nigens2020_val",
+   "nigens2020_test"
+  ],
+  "tau_nigens2021": [
+   "nigens2021_val",
+   "nigens2021_test"
+  ]
+ },
+ "thresholds": [
+  0.05,
+  0.1,
+  0.15,
+  0.2,
+  0.25,
+  0.3,
+  0.35,
+  0.4,
+  0.45,
+  0.5,
+  0.55,
+  0.6,
+  0.65,
+  0.7,
+  0.75,
+  0.8,
+  0.85,
+  0.9,
+  0.95
+ ],
+ "angles": [
+  5.0,
+  10.0,
+  15.0,
+  20.0,
+  30.0,
+  45.0
+ ],
+ "validation": "val split (STARSS23 validation pool of seed 2, as in the stored matrix)",
+ "stored_matrix": "results/diagnostics/dataset_generalization/aggregate/all_test_metrics.csv",
+ "kernel": "analysis/diagnostics/seld_variants.GatedCounts (count-exact vs SELDMetrics)",
+ "elapsed_s": 1000.5,
+ "load_at_start": "5.29 8.79 11.09",
+ "load_at_end": "6.97 6.99 8.31",
+ "date": "2026-10-26 04:13:51"
+}

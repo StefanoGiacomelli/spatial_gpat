@@ -359,9 +359,10 @@ def load_nas_model(cfg_path: Path, ckpt_path: Path,
     return model, cfg, orig_sr, tpit_loss
 
 
-def load_standalone_model(cfg_path: Path, ckpt_path: Path,
-                          device: torch.device) -> Tuple[nn.Module, dict, int]:
-    """Load StandaloneSELDModule checkpoint. Returns (model, cfg, orig_sr)."""
+def load_standalone_model(cfg_path: Path, ckpt_path: Path, device: torch.device,
+                          return_tpit: bool = False):
+    """Load StandaloneSELDModule checkpoint. Returns (model, cfg, orig_sr), or
+    (model, cfg, orig_sr, tpit_loss) when ``return_tpit`` is True (``--align-standalone``)."""
     from experiments_standalone_seld.train import StandaloneSELDModule
     cfg = load_yaml_cfg(cfg_path)
     with warnings.catch_warnings():
@@ -370,6 +371,8 @@ def load_standalone_model(cfg_path: Path, ckpt_path: Path,
             str(ckpt_path), cfg=cfg, map_location='cpu')
     model   = module.model.eval().to(device)
     orig_sr = getattr(module, 'orig_sr', cfg.get('input', {}).get('sr', 24000))
+    if return_tpit:
+        return model, cfg, orig_sr, module.tpit_loss.eval().to(device)
     return model, cfg, orig_sr
 
 
@@ -386,13 +389,20 @@ def run_inference(model: nn.Module, loader, device: torch.device,
     Run forward pass, return (doa_list, target_list, act_logits_list, n_frames).
     All tensors moved to CPU numpy. act_logits stored for secondary diagnostics only.
     For NAS-SELD models with tpit_loss provided, doa predictions are PIT-aligned
-    (via tPITLoss.last_best_perm) before being stored.
+    (via tPITLoss.last_best_perm) before being stored.  Standalone models are aligned
+    only when a ``tpit_loss`` is passed (CLI ``--align-standalone``); the default
+    (historical) behaviour leaves their slots in the raw network order.
     """
-    alignment = 'PIT-aligned' if (is_nas and tpit_loss is not None) else 'raw/unmatched'
+    aligned = tpit_loss is not None
+    alignment = 'PIT-aligned' if aligned else 'raw/unmatched'
     print(f'  DOA oracle alignment: {alignment}')
-    if alignment == 'raw/unmatched' and is_nas:
+    if not aligned and is_nas:
         print('  WARNING: DOA oracle metrics are computed without PIT alignment '
               'and may be unreliable for tPIT models.')
+    elif not aligned:
+        print('  WARNING: standalone models are trained with tPITLoss (the slot order is arbitrary w.r.t. the '
+              'target slots); without --align-standalone these statistics are NOT comparable with the '
+              'PIT-aligned NAS-SELD statistics.')
 
     doa_list, tgt_list, act_list = [], [], []
     n_frames = 0
@@ -413,7 +423,7 @@ def run_inference(model: nn.Module, loader, device: torch.device,
             tgt_t = target[:, :T]
 
             # PIT-align predicted DOA tracks to target tracks using tPITLoss permutation
-            if is_nas and tpit_loss is not None:
+            if tpit_loss is not None:
                 tpit_loss(act_t, doa_t, tgt_t)        # sets tpit_loss.last_best_perm
                 perm = tpit_loss.last_best_perm        # (B*T*C, N)
                 B_, T_, N_, C_, _ = doa_t.shape
@@ -1260,6 +1270,7 @@ def save_outputs(args, model_names: List[str],
             'zero_norm_thresholds': args.zero_norm_thresholds,
             'static_thresh_deg': args.static_thresh_deg,
             'moving_thresh_deg': args.moving_thresh_deg,
+            'align_standalone': bool(args.align_standalone),
         },
         'models': {
             name: {
@@ -1326,6 +1337,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument('--models', nargs='+',
                    choices=['nas_seld_x1', 'standalone_conformer', 'standalone_resnet'],
                    default=['nas_seld_x1', 'standalone_conformer', 'standalone_resnet'])
+    p.add_argument('--align-standalone', action='store_true',
+                   help="PIT-align the DOA slots of the standalone models with the checkpoint's tPITLoss, as "
+                        "for NAS-SELD and as the training-time test of StandaloneSELDModule does. Default off = "
+                        "historical behaviour of the stored results (raw slot order, not comparable with NAS-SELD).")
     # Diagnostics
     p.add_argument('--coordinate-sanity-check', action='store_true')
     p.add_argument('--angle-thresholds',     type=float, nargs='+',
@@ -1427,8 +1442,12 @@ def main() -> None:
             if is_nas:
                 model, cfg, orig_sr, tpit_loss = load_nas_model(cfg_path, ckpt_path, device)
             else:
-                model, cfg, orig_sr = load_standalone_model(cfg_path, ckpt_path, device)
-                tpit_loss = None
+                if args.align_standalone:
+                    model, cfg, orig_sr, tpit_loss = load_standalone_model(
+                        cfg_path, ckpt_path, device, return_tpit=True)
+                else:
+                    model, cfg, orig_sr = load_standalone_model(cfg_path, ckpt_path, device)
+                    tpit_loss = None
         except Exception as exc:
             print(f'  ERROR loading {logical_name}: {exc}')
             import traceback; traceback.print_exc()

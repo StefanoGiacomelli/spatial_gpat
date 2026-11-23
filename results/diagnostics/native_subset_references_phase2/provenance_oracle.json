@@ -1,0 +1,18 @@
+{
+ "script": "analysis/diagnostics/native_subset_oracle.py",
+ "argv": [
+  "--cache-root",
+  "<cache-dir>"
+ ],
+ "caches": {
+  "starss23": "expA_starss23_test",
+  "tau2019": "tau2019_test",
+  "tau_nigens2021": "nigens2021_test",
+  "tau_nigens2020": "nigens2020_test"
+ },
+ "elapsed_s": 130.3,
+ "load_at_start": "9.66 7.90 8.25",
+ "load_at_end": "6.63 7.45 8.03",
+ "date": "2026-10-26 04:21:21",
+ "stored": "results/diagnostics/dataset_generalization/aggregate/doa_oracle/doa_oracle_aggregate.csv"
+}

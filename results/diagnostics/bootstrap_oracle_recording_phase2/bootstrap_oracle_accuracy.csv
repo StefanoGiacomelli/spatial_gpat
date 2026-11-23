@@ -1,0 +1,11 @@
+run,n_recordings,active_slots,acc_20deg_percent,ci95_low_percent,ci95_high_percent
+mixed_bce,78,6128934,12.13,9.54,14.83
+mixed_focal (reference),78,6128934,18.88,15.64,22.07
+"ExpA (native STARSS23, no augmentation)",78,6128934,33.67,29.2,38.59
+ExpB,78,6128934,31.78,27.1,36.64
+ExpB-beta.7,78,6128934,25.34,21.38,29.45
+ExpC,78,6128934,29.32,24.4,34.39
+ExpA-posw,78,6128934,29.74,24.79,34.89
+"Conformer ExpA (standalone, historical raw-slot log, NOT PIT-aligned: not comparable)",78,6128934,10.85,7.41,14.79
+"Conformer ExpA (standalone, Balanced + augmentation; tPIT-aligned)",78,6128934,28.52,24.54,32.73
+"ResNet ExpA (standalone, Balanced + augmentation; tPIT-aligned)",78,6128934,27.08,22.3,31.85

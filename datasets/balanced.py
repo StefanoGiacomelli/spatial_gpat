@@ -795,6 +795,7 @@ class BalancedSELDDataModule(L.LightningDataModule):
                 gain_min     = aug_cfg.get('gain_min', 0.5),
                 gain_max     = aug_cfg.get('gain_max', 0.5),
                 noise_snr_db = aug_cfg.get('noise_snr_db', 30.0),
+                foa_channel_order = aug_cfg.get('foa_channel_order', 'legacy_wxyz'),
             )
 
         self._train_ds: Optional[BalancedSTARSS23Dataset] = None

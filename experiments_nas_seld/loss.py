@@ -396,11 +396,26 @@ class SELDMetrics:
     """
     Accumulate SELD evaluation metrics over validation batches.
 
-    Fully aligned with the DCASE 2023 baseline:
-      - Hungarian optimal matching (scipy.optimize.linear_sum_assignment)
-      - LE_CD and LR_CD computed per-class then macro-averaged (Class-Dependent)
-      - ER_20° uses the DCASE formula: max(FP, FN) / (TP + FN)
-      - F_20° computed globally: TP / (TP + 0.5*(FP+FN))
+    This is the metric of the AT2SELD pipeline.  It is **inspired by** the DCASE
+    SELD scores (Hungarian matching, class-averaged localisation scores, the
+    ER/F/LE/LR combination) but it is **not** the official DCASE 2023 evaluation
+    and its numbers are not directly comparable with DCASE-reported values:
+
+      - evaluation unit: one *model frame* (10 ms at 32 kHz / hop 320) and one class,
+        never 100-ms frames or 1-s segments; the windows of the validation/test
+        loaders (10 s, hop 2.5 s) are accumulated without stitching, so interior
+        frames are counted up to 4 times;
+      - *gated* localisation (default): a predicted/reference pair exists only if
+        its angle is <= ``angle_thresh`` (Hungarian on the 1e9-capped cost), so
+        LE_CD is <= ``angle_thresh`` by construction and LR_CD is a
+        location-dependent recall (DCASE's LE_CD/LR_CD are class-dependent and
+        *not* gated; ``gated=False`` below provides that variant);
+      - ER_20 = max(FP, FN) / (TP + FN) on counts pooled over all frames and
+        classes (not accumulated per segment, no S/D/I split); it is unbounded
+        above, hence SELD >= 0 only (not in [0, 1]);
+      - F_20 is a micro (pooled) F-score; LE_CD and LR_CD are macro-averaged over
+        the classes with >= 1 TP (LE) / >= 1 reference (LR), classes without TP
+        are excluded, not assigned 180 deg.
 
     Metrics:
         LE_CD   — macro-averaged per-class mean angular localization error (°)
@@ -418,15 +433,29 @@ class SELDMetrics:
         results = metrics.compute()   # dict with float values
         metrics.reset()
 
+    Segment-based / stitched DCASE-style variants (re-implementation, not part of
+    the headline protocol) live in ``analysis/diagnostics/seld_variants.py``.
+
     Args:
         angle_thresh (float): angular tolerance in degrees for TP matching.
         act_thresh   (float): sigmoid(act_logits) threshold to declare a track active.
+        gated        (bool) : ``True`` (default, the protocol of every reported
+            number): Hungarian matching on the angle-gated cost, localisation
+            scores from pairs within ``angle_thresh`` only.  ``False``: Hungarian
+            matching on the *ungated* angle; TP/FP/FN (hence ER_20/F_20) are
+            still counted with the ``angle_thresh`` gate, and ``compute()``
+            returns *class-dependent ungated* LE_CD (mean angle of all matched
+            pairs per class, 180° for a class with references but no matched
+            pair) and LR_CD (matched pairs / references per class), both
+            macro-averaged over the classes that have references.
     """
 
-    def __init__(self, angle_thresh: float = 20.0, act_thresh: float = ACTIVE_THRESH):
+    def __init__(self, angle_thresh: float = 20.0, act_thresh: float = ACTIVE_THRESH,
+                 gated: bool = True):
         """Initialize SELDMetrics accumulators."""
         self.angle_thresh = angle_thresh
         self.act_thresh   = act_thresh
+        self.gated        = bool(gated)
         self.reset()
 
     def reset(self):
@@ -436,6 +465,10 @@ class SELDMetrics:
         self._fn        = defaultdict(int)    # class → FN count
         self._tp_loc    = defaultdict(int)    # class → localisation TP count
         self._angle_sum = defaultdict(float)  # class → sum of angular errors for TP pairs
+        # ungated (class-dependent) accumulators, used only when gated=False
+        self._de_cnt    = defaultdict(int)    # class → matched pairs (any angle)
+        self._de_sum    = defaultdict(float)  # class → sum of angles of all matched pairs
+        self._n_ref     = defaultdict(int)    # class → reference events
         self._n_classes = 0
 
     # ------------------------------------------------------------------
@@ -486,6 +519,8 @@ class SELDMetrics:
             P_cnt  = p_vecs.shape[0]
             Q_cnt  = t_vecs.shape[0]
 
+            if not self.gated:
+                self._n_ref[c_idx] += Q_cnt
             if Q_cnt == 0:
                 self._fp[c_idx] += P_cnt
                 continue
@@ -501,8 +536,16 @@ class SELDMetrics:
 
             # Hungarian optimal matching (minimises total angular cost)
             cost        = angles.cpu().numpy()                        # (P, Q) degrees
-            cost_capped = np.where(cost <= self.angle_thresh, cost, 1e9)
+            if self.gated:
+                cost_capped = np.where(cost <= self.angle_thresh, cost, 1e9)
+            else:
+                cost_capped = cost                                    # ungated Hungarian
             row_ind, col_ind = linear_sum_assignment(cost_capped)
+
+            if not self.gated:
+                for pi, ti in zip(row_ind.tolist(), col_ind.tolist()):
+                    self._de_cnt[c_idx] += 1
+                    self._de_sum[c_idx] += float(cost[pi, ti])
 
             tp_pairs = [
                 (pi, ti) for pi, ti in zip(row_ind.tolist(), col_ind.tolist())
@@ -545,6 +588,15 @@ class SELDMetrics:
 
         # F_20°: global
         f_20  = tp_g / (tp_g + 0.5 * (fp_g + fn_g)) if (tp_g + fp_g + fn_g) > 0 else 0.0
+
+        if not self.gated:
+            # class-dependent, ungated localisation (180° for classes with
+            # references but no matched pair), macro over classes with references
+            present = [c for c in range(C) if self._n_ref[c] > 0]
+            le_cd = (sum(self._de_sum[c] / self._de_cnt[c] if self._de_cnt[c] > 0 else 180.0
+                         for c in present) / len(present)) if present else 0.0
+            lr_cd = (sum(self._de_cnt[c] / self._n_ref[c] for c in present)
+                     / len(present)) if present else 0.0
 
         seld = (er_20 + (1.0 - f_20) + le_cd / 180.0 + (1.0 - lr_cd)) / 4.0
 

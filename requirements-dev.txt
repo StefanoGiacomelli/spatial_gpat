@@ -1,0 +1,3 @@
+# Development / test dependencies (not needed to run the models or the analyses)
+# Tested with pytest 9.1.1 (Python 3.14.6).  Run:  pytest   (collection is restricted to tests/ by pytest.ini)
+pytest>=8

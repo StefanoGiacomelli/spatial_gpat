@@ -318,7 +318,8 @@ class NASModel(nn.Module):
     Configurable spatial × semantic SELD pipeline.
 
     Args:
-        cfg (dict): full parsed YAML config (nas_base.yaml).
+        cfg (dict): full parsed experiment configuration (an experiment YAML under
+            configs/ or a stored runs/**/hparams.yaml ``cfg`` block).
 
     Forward:
         x : (B, n_mics, T_samples) — raw multichannel waveform at *any* SR.
